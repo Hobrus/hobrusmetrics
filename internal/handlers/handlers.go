@@ -5,10 +5,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Hobrus/hobrusmetrics.git/internal/storage"
+	"github.com/Hobrus/hobrusmetrics.git/internal/repositories"
 )
 
-func UpdateHandler(s storage.Storage) http.HandlerFunc {
+func UpdateHandler(s repositories.Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -44,14 +44,14 @@ func UpdateHandler(s storage.Storage) http.HandlerFunc {
 				http.Error(w, "Bad Request", http.StatusBadRequest)
 				return
 			}
-			s.UpdateGauge(metricName, storage.Gauge(value))
+			s.UpdateGauge(metricName, repositories.Gauge(value))
 		case "counter":
 			value, err := strconv.ParseInt(metricValue, 10, 64)
 			if err != nil {
 				http.Error(w, "Bad Request", http.StatusBadRequest)
 				return
 			}
-			s.UpdateCounter(metricName, storage.Counter(value))
+			s.UpdateCounter(metricName, repositories.Counter(value))
 		default:
 			http.Error(w, "Bad Request", http.StatusBadRequest)
 			return
