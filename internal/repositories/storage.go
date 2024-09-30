@@ -6,4 +6,6 @@ type Counter int64
 type Storage interface {
 	UpdateGauge(name string, value Gauge)
 	UpdateCounter(name string, value Counter)
+	GetGauge(name string) (Gauge, bool)
+	GetCounter(name string) (Counter, bool)
 }

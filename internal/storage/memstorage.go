@@ -30,3 +30,17 @@ func (m *MemStorage) UpdateCounter(name string, value repositories.Counter) {
 	defer m.mu.Unlock()
 	m.counters[name] += value
 }
+
+func (m *MemStorage) GetGauge(name string) (repositories.Gauge, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	value, exists := m.gauges[name]
+	return value, exists
+}
+
+func (m *MemStorage) GetCounter(name string) (repositories.Counter, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	value, exists := m.counters[name]
+	return value, exists
+}
