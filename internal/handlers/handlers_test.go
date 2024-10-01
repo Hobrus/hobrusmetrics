@@ -95,12 +95,16 @@ func TestUpdateHandler(t *testing.T) {
 			handler(w, req)
 
 			resp := w.Result()
-			defer func(Body io.ReadCloser) {
-				err := Body.Close()
-				if err != nil {
-					t.Errorf("Failed to close response body: %v", err)
-				}
-			}(resp.Body) // Ensure response body is closed
+
+			// Ensure response body is closed if it exists
+			if resp.Body != nil {
+				defer func(Body io.ReadCloser) {
+					err := Body.Close()
+					if err != nil {
+						t.Errorf("Failed to close response body: %v", err)
+					}
+				}(resp.Body)
+			}
 
 			if resp.StatusCode != tc.expectedStatus {
 				t.Errorf("Expected status %d, got %d", tc.expectedStatus, resp.StatusCode)
