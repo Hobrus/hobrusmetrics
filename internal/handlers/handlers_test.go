@@ -1,20 +1,25 @@
 package handlers
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/Hobrus/hobrusmetrics.git/internal/repositories"
-	"github.com/Hobrus/hobrusmetrics.git/internal/storage"
+	"github.com/Hobrus/hobrusmetrics.git/internal/service"
 )
 
 func TestUpdateHandler(t *testing.T) {
-	var repo repositories.Storage = storage.NewMemStorage()
+	// Создаем новое хранилище в памяти
+	storage := service.NewMemStorage()
 
-	handler := UpdateHandler(repo)
+	// Создаем экземпляр MetricsService с использованием хранилища
+	metricsService := &service.MetricsService{Storage: storage}
+
+	// Создаем хендлер
+	handler := UpdateHandler(metricsService)
 
 	tests := []struct {
 		name           string
@@ -70,7 +75,7 @@ func TestUpdateHandler(t *testing.T) {
 			method:         http.MethodPost,
 			contentType:    "text/plain",
 			url:            "/update/gauge//123.45",
-			expectedStatus: http.StatusNotFound,
+			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:           "Invalid URL path",
@@ -90,6 +95,13 @@ func TestUpdateHandler(t *testing.T) {
 			handler(w, req)
 
 			resp := w.Result()
+			defer func(Body io.ReadCloser) {
+				err := Body.Close()
+				if err != nil {
+					t.Errorf("Failed to close response body: %v", err)
+				}
+			}(resp.Body) // Ensure response body is closed
+
 			if resp.StatusCode != tc.expectedStatus {
 				t.Errorf("Expected status %d, got %d", tc.expectedStatus, resp.StatusCode)
 			}
@@ -102,7 +114,7 @@ func TestUpdateHandler(t *testing.T) {
 
 				switch metricType {
 				case "gauge":
-					repoGauge, exists := repo.GetGauge(metricName)
+					repoGauge, exists := storage.GetGauge(metricName)
 					if !exists {
 						t.Errorf("Gauge metric %s was not stored", metricName)
 					} else {
@@ -112,7 +124,7 @@ func TestUpdateHandler(t *testing.T) {
 						}
 					}
 				case "counter":
-					repoCounter, exists := repo.GetCounter(metricName)
+					repoCounter, exists := storage.GetCounter(metricName)
 					if !exists {
 						t.Errorf("Counter metric %s was not stored", metricName)
 					} else {

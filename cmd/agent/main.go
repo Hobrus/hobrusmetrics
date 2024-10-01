@@ -23,14 +23,12 @@ func main() {
 	defer metricsTicker.Stop()
 	defer reportTicker.Stop()
 
-	// Initialize metrics storage
 	var m runtime.MemStats
 	metrics := make(map[string]interface{})
 
 	for {
 		select {
 		case <-metricsTicker.C:
-			// Update runtime metrics
 			runtime.ReadMemStats(&m)
 			metrics["Alloc"] = float64(m.Alloc)
 			metrics["BuckHashSys"] = float64(m.BuckHashSys)
@@ -60,14 +58,11 @@ func main() {
 			metrics["Sys"] = float64(m.Sys)
 			metrics["TotalAlloc"] = float64(m.TotalAlloc)
 
-			// Update PollCount
 			pollCount++
 			metrics["PollCount"] = pollCount
 
-			// Update RandomValue
 			metrics["RandomValue"] = rand.Float64()
 		case <-reportTicker.C:
-			// Send metrics to server
 			for name, value := range metrics {
 				var metricType string
 				var valueStr string

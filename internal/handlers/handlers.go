@@ -2,13 +2,12 @@ package handlers
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 
-	"github.com/Hobrus/hobrusmetrics.git/internal/repositories"
+	"github.com/Hobrus/hobrusmetrics.git/internal/service"
 )
 
-func UpdateHandler(s repositories.Storage) http.HandlerFunc {
+func UpdateHandler(ms *service.MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -32,28 +31,9 @@ func UpdateHandler(s repositories.Storage) http.HandlerFunc {
 		metricName := parts[2]
 		metricValue := parts[3]
 
-		if metricName == "" {
-			http.Error(w, "Metric name is required", http.StatusNotFound)
-			return
-		}
-
-		switch metricType {
-		case "gauge":
-			value, err := strconv.ParseFloat(metricValue, 64)
-			if err != nil {
-				http.Error(w, "Bad Request", http.StatusBadRequest)
-				return
-			}
-			s.UpdateGauge(metricName, repositories.Gauge(value))
-		case "counter":
-			value, err := strconv.ParseInt(metricValue, 10, 64)
-			if err != nil {
-				http.Error(w, "Bad Request", http.StatusBadRequest)
-				return
-			}
-			s.UpdateCounter(metricName, repositories.Counter(value))
-		default:
-			http.Error(w, "Bad Request", http.StatusBadRequest)
+		err := ms.UpdateMetric(metricType, metricName, metricValue)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
