@@ -46,13 +46,18 @@ func (r *Router) handleUpdate(ctx *fasthttp.RequestCtx) {
 
 	parts := strings.Split(string(ctx.Path())[1:], "/")
 	if len(parts) != 4 || parts[0] != "update" {
-		ctx.Error("Invalid URL format", fasthttp.StatusBadRequest)
+		ctx.Error("Not found", fasthttp.StatusNotFound) // Изменено с BadRequest на NotFound
 		return
 	}
 
 	metricType := parts[1]
 	metricName := parts[2]
 	metricValue := parts[3]
+
+	if metricName == "" {
+		ctx.Error("Not found", fasthttp.StatusNotFound) // Добавлена проверка на пустое имя метрики
+		return
+	}
 
 	err := r.metricsService.UpdateMetric(metricType, metricName, metricValue)
 	if err != nil {
@@ -117,6 +122,11 @@ func (r *Router) handleJSONUpdate(ctx *fasthttp.RequestCtx) {
 	var req MetricRequest
 	if err := json.Unmarshal(ctx.PostBody(), &req); err != nil {
 		ctx.Error("Invalid JSON", fasthttp.StatusBadRequest)
+		return
+	}
+
+	if req.ID == "" {
+		ctx.Error("Not found", fasthttp.StatusNotFound) // Добавлена проверка на пустой ID
 		return
 	}
 

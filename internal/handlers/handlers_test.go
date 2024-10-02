@@ -77,8 +77,8 @@ func TestRouter(t *testing.T) {
 			name:           "Metric name missing",
 			method:         "POST",
 			url:            "/update/gauge//123.45",
-			expectedStatus: fasthttp.StatusBadRequest,
-			expectedBody:   "Invalid URL format",
+			expectedStatus: fasthttp.StatusNotFound,
+			expectedBody:   "Not found",
 		},
 		{
 			name:           "Invalid URL path",
