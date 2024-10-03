@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"os"
 
 	"github.com/Hobrus/hobrusmetrics.git/internal/handlers"
 	"github.com/Hobrus/hobrusmetrics.git/internal/repositories"
@@ -13,6 +14,10 @@ import (
 func main() {
 	serverAddress := flag.String("a", "localhost:8080", "HTTP server address")
 	flag.Parse()
+
+	if envAddress := os.Getenv("ADDRESS"); envAddress != "" {
+		*serverAddress = envAddress
+	}
 
 	if flag.NArg() > 0 {
 		log.Fatalf("Unknown argument: %s", flag.Arg(0))

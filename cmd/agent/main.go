@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"runtime"
 	"strconv"
 	"time"
@@ -17,6 +18,20 @@ func main() {
 	reportInterval := flag.Int("r", 10, "Report interval in seconds")
 	pollInterval := flag.Int("p", 2, "Poll interval in seconds")
 	flag.Parse()
+
+	if envAddress := os.Getenv("ADDRESS"); envAddress != "" {
+		*serverAddress = envAddress
+	}
+	if envReportInterval := os.Getenv("REPORT_INTERVAL"); envReportInterval != "" {
+		if ri, err := strconv.Atoi(envReportInterval); err == nil {
+			*reportInterval = ri
+		}
+	}
+	if envPollInterval := os.Getenv("POLL_INTERVAL"); envPollInterval != "" {
+		if pi, err := strconv.Atoi(envPollInterval); err == nil {
+			*pollInterval = pi
+		}
+	}
 
 	if flag.NArg() > 0 {
 		log.Fatalf("Unknown argument: %s", flag.Arg(0))
