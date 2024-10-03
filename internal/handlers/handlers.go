@@ -8,19 +8,27 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func SetupRoutes(router *gin.Engine, ms *service.MetricsService) {
-	router.POST("/update/:type/:name/:value", updateHandler(ms))
-	router.GET("/value/:type/:name", getValueHandler(ms))
-	router.GET("/", getAllMetricsHandler(ms))
+type Handler struct {
+	ms *service.MetricsService
 }
 
-func updateHandler(ms *service.MetricsService) gin.HandlerFunc {
+func NewHandler(ms *service.MetricsService) *Handler {
+	return &Handler{ms: ms}
+}
+
+func (h *Handler) SetupRoutes(router *gin.Engine) {
+	router.POST("/update/:type/:name/:value", h.updateHandler())
+	router.GET("/value/:type/:name", h.getValueHandler())
+	router.GET("/", h.getAllMetricsHandler())
+}
+
+func (h *Handler) updateHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		metricType := c.Param("type")
 		metricName := c.Param("name")
 		metricValue := c.Param("value")
 
-		err := ms.UpdateMetric(metricType, metricName, metricValue)
+		err := h.ms.UpdateMetric(metricType, metricName, metricValue)
 		if err != nil {
 			c.String(http.StatusBadRequest, err.Error())
 			return
@@ -30,12 +38,12 @@ func updateHandler(ms *service.MetricsService) gin.HandlerFunc {
 	}
 }
 
-func getValueHandler(ms *service.MetricsService) gin.HandlerFunc {
+func (h *Handler) getValueHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		metricType := c.Param("type")
 		metricName := c.Param("name")
 
-		value, err := ms.GetMetricValue(metricType, metricName)
+		value, err := h.ms.GetMetricValue(metricType, metricName)
 		if err != nil {
 			c.Status(http.StatusNotFound)
 			return
@@ -45,9 +53,9 @@ func getValueHandler(ms *service.MetricsService) gin.HandlerFunc {
 	}
 }
 
-func getAllMetricsHandler(ms *service.MetricsService) gin.HandlerFunc {
+func (h *Handler) getAllMetricsHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		metrics := ms.GetAllMetrics()
+		metrics := h.ms.GetAllMetrics()
 
 		tmpl, err := template.New("metrics").Parse(`
 		<html>

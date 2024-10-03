@@ -4,17 +4,19 @@ import (
 	"log"
 
 	"github.com/Hobrus/hobrusmetrics.git/internal/handlers"
+	"github.com/Hobrus/hobrusmetrics.git/internal/repositories"
 	"github.com/Hobrus/hobrusmetrics.git/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
-	storage := service.NewMemStorage()
+	var storage repositories.Storage = service.NewMemStorage()
 	metricsService := &service.MetricsService{Storage: storage}
+	handler := handlers.NewHandler(metricsService)
 
 	router := gin.Default()
 
-	handlers.SetupRoutes(router, metricsService)
+	handler.SetupRoutes(router)
 
 	log.Println("Сервер запущен на :8080")
 	if err := router.Run(":8080"); err != nil {
