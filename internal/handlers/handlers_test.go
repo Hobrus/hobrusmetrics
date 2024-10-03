@@ -81,7 +81,7 @@ func TestGetValueHandler(t *testing.T) {
 			name:           "Get existing gauge metric",
 			url:            "/value/gauge/Alloc",
 			expectedStatus: http.StatusOK,
-			expectedBody:   "123.450",
+			expectedBody:   "123.45",
 		},
 		{
 			name:           "Get existing counter metric",
@@ -127,7 +127,7 @@ func TestGetAllMetricsHandler(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "Alloc: 123.450")
+	assert.Contains(t, w.Body.String(), "Alloc: 123.45")
 	assert.Contains(t, w.Body.String(), "PollCount: 10")
 }
 
@@ -145,17 +145,17 @@ func TestMetricsServiceIntegration(t *testing.T) {
 	req, _ = http.NewRequest(http.MethodGet, "/value/gauge/TestMetric", nil)
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "42.000", w.Body.String())
+	assert.Equal(t, "42", w.Body.String())
 
 	// Test getting all metrics
 	w = httptest.NewRecorder()
 	req, _ = http.NewRequest(http.MethodGet, "/", nil)
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "TestMetric: 42.000")
+	assert.Contains(t, w.Body.String(), "TestMetric: 42")
 
 	// Verify the metric is stored correctly
 	value, err := ms.GetMetricValue("gauge", "TestMetric")
 	require.NoError(t, err)
-	assert.Equal(t, "42.000", value)
+	assert.Equal(t, "42", value)
 }

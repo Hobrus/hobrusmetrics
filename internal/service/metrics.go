@@ -40,7 +40,7 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 	switch metricType {
 	case "gauge":
 		if value, ok := ms.Storage.GetGauge(metricName); ok {
-			return fmt.Sprintf("%.3f", value), nil
+			return strconv.FormatFloat(float64(value), 'f', -1, 64), nil
 		}
 	case "counter":
 		if value, ok := ms.Storage.GetCounter(metricName); ok {
@@ -56,7 +56,7 @@ func (ms *MetricsService) GetAllMetrics() map[string]string {
 	metrics := make(map[string]string)
 
 	for name, value := range ms.Storage.GetAllGauges() {
-		metrics[name] = fmt.Sprintf("%.3f", value)
+		metrics[name] = strconv.FormatFloat(float64(value), 'f', -1, 64)
 	}
 
 	for name, value := range ms.Storage.GetAllCounters() {
