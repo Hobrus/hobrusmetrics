@@ -3,132 +3,157 @@ package handlers
 import (
 	"net/http"
 	"net/http/httptest"
-	"strconv"
-	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Hobrus/hobrusmetrics.git/internal/service"
 )
 
-func TestUpdateHandler(t *testing.T) {
-	// Создаем новое хранилище в памяти
+func setupRouter() (*gin.Engine, *service.MetricsService) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
 	storage := service.NewMemStorage()
-
-	// Создаем экземпляр MetricsService с использованием хранилища
 	metricsService := &service.MetricsService{Storage: storage}
+	SetupRoutes(router, metricsService)
+	return router, metricsService
+}
 
-	// Создаем хендлер
-	handler := UpdateHandler(metricsService)
+func TestUpdateHandler(t *testing.T) {
+	router, _ := setupRouter()
 
 	tests := []struct {
 		name           string
-		method         string
-		contentType    string
 		url            string
 		expectedStatus int
 	}{
 		{
 			name:           "Valid gauge metric update",
-			method:         http.MethodPost,
-			contentType:    "text/plain",
 			url:            "/update/gauge/Alloc/123.45",
 			expectedStatus: http.StatusOK,
 		},
 		{
 			name:           "Valid counter metric update",
-			method:         http.MethodPost,
-			contentType:    "text/plain",
 			url:            "/update/counter/PollCount/10",
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "Unsupported method",
-			method:         http.MethodGet,
-			contentType:    "text/plain",
-			url:            "/update/gauge/Alloc/123.45",
-			expectedStatus: http.StatusMethodNotAllowed,
-		},
-		{
-			name:           "Unsupported content type",
-			method:         http.MethodPost,
-			contentType:    "application/json",
-			url:            "/update/gauge/Alloc/123.45",
-			expectedStatus: http.StatusUnsupportedMediaType,
-		},
-		{
 			name:           "Invalid metric type",
-			method:         http.MethodPost,
-			contentType:    "text/plain",
 			url:            "/update/invalid/Alloc/123.45",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:           "Invalid metric value",
-			method:         http.MethodPost,
-			contentType:    "text/plain",
 			url:            "/update/gauge/Alloc/abc",
 			expectedStatus: http.StatusBadRequest,
 		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req, _ := http.NewRequest(http.MethodPost, tc.url, nil)
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tc.expectedStatus, w.Code)
+		})
+	}
+}
+
+func TestGetValueHandler(t *testing.T) {
+	router, ms := setupRouter()
+
+	// Setup some initial data
+	_ = ms.UpdateMetric("gauge", "Alloc", "123.45")
+	_ = ms.UpdateMetric("counter", "PollCount", "10")
+
+	tests := []struct {
+		name           string
+		url            string
+		expectedStatus int
+		expectedBody   string
+	}{
 		{
-			name:           "Metric name missing",
-			method:         http.MethodPost,
-			contentType:    "text/plain",
-			url:            "/update/gauge//123.45",
-			expectedStatus: http.StatusBadRequest,
+			name:           "Get existing gauge metric",
+			url:            "/value/gauge/Alloc",
+			expectedStatus: http.StatusOK,
+			expectedBody:   "123.450",
 		},
 		{
-			name:           "Invalid URL path",
-			method:         http.MethodPost,
-			contentType:    "text/plain",
-			url:            "/invalidpath/gauge/Alloc/123.45",
+			name:           "Get existing counter metric",
+			url:            "/value/counter/PollCount",
+			expectedStatus: http.StatusOK,
+			expectedBody:   "10",
+		},
+		{
+			name:           "Get non-existent metric",
+			url:            "/value/gauge/NonExistent",
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			name:           "Invalid metric type",
+			url:            "/value/invalid/Metric",
 			expectedStatus: http.StatusNotFound,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(tc.method, tc.url, nil)
-			req.Header.Set("Content-Type", tc.contentType)
 			w := httptest.NewRecorder()
+			req, _ := http.NewRequest(http.MethodGet, tc.url, nil)
+			router.ServeHTTP(w, req)
 
-			handler(w, req)
-
-			resp := w.Result()
-			defer resp.Body.Close() // Ensure the response body is always closed
-
-			if resp.StatusCode != tc.expectedStatus {
-				t.Errorf("Expected status %d, got %d", tc.expectedStatus, resp.StatusCode)
-			}
-
-			if resp.StatusCode == http.StatusOK {
-				parts := strings.Split(strings.TrimPrefix(tc.url, "/"), "/")
-				metricType := parts[1]
-				metricName := parts[2]
-				metricValue := parts[3]
-
-				switch metricType {
-				case "gauge":
-					repoGauge, exists := storage.GetGauge(metricName)
-					if !exists {
-						t.Errorf("Gauge metric %s was not stored", metricName)
-					} else {
-						value, _ := strconv.ParseFloat(metricValue, 64)
-						if float64(repoGauge) != value {
-							t.Errorf("Gauge metric %s has value %v, expected %v", metricName, repoGauge, value)
-						}
-					}
-				case "counter":
-					repoCounter, exists := storage.GetCounter(metricName)
-					if !exists {
-						t.Errorf("Counter metric %s was not stored", metricName)
-					} else {
-						value, _ := strconv.ParseInt(metricValue, 10, 64)
-						if int64(repoCounter) != value {
-							t.Errorf("Counter metric %s has value %v, expected %v", metricName, repoCounter, value)
-						}
-					}
-				}
+			assert.Equal(t, tc.expectedStatus, w.Code)
+			if tc.expectedStatus == http.StatusOK {
+				assert.Equal(t, tc.expectedBody, w.Body.String())
 			}
 		})
 	}
+}
+
+func TestGetAllMetricsHandler(t *testing.T) {
+	router, ms := setupRouter()
+
+	// Setup some initial data
+	_ = ms.UpdateMetric("gauge", "Alloc", "123.45")
+	_ = ms.UpdateMetric("counter", "PollCount", "10")
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "Alloc: 123.450")
+	assert.Contains(t, w.Body.String(), "PollCount: 10")
+}
+
+func TestMetricsServiceIntegration(t *testing.T) {
+	router, ms := setupRouter()
+
+	// Test updating a metric
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/update/gauge/TestMetric/42.0", nil)
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Test getting the updated metric
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest(http.MethodGet, "/value/gauge/TestMetric", nil)
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "42.000", w.Body.String())
+
+	// Test getting all metrics
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest(http.MethodGet, "/", nil)
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "TestMetric: 42.000")
+
+	// Verify the metric is stored correctly
+	value, err := ms.GetMetricValue("gauge", "TestMetric")
+	require.NoError(t, err)
+	assert.Equal(t, "42.000", value)
 }

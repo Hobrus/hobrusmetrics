@@ -3,8 +3,9 @@ package service
 import (
 	"errors"
 	"fmt"
-	"github.com/Hobrus/hobrusmetrics.git/internal/repositories"
 	"strconv"
+
+	"github.com/Hobrus/hobrusmetrics.git/internal/repositories"
 )
 
 type MetricsService struct {
@@ -33,4 +34,34 @@ func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue strin
 		return errors.New("unsupported metric type")
 	}
 	return nil
+}
+
+func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string, error) {
+	switch metricType {
+	case "gauge":
+		if value, ok := ms.Storage.GetGauge(metricName); ok {
+			return fmt.Sprintf("%.3f", value), nil
+		}
+	case "counter":
+		if value, ok := ms.Storage.GetCounter(metricName); ok {
+			return fmt.Sprintf("%d", value), nil
+		}
+	default:
+		return "", errors.New("unsupported metric type")
+	}
+	return "", errors.New("metric not found")
+}
+
+func (ms *MetricsService) GetAllMetrics() map[string]string {
+	metrics := make(map[string]string)
+
+	for name, value := range ms.Storage.GetAllGauges() {
+		metrics[name] = fmt.Sprintf("%.3f", value)
+	}
+
+	for name, value := range ms.Storage.GetAllCounters() {
+		metrics[name] = fmt.Sprintf("%d", value)
+	}
+
+	return metrics
 }
