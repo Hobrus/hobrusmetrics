@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
@@ -12,14 +13,22 @@ import (
 )
 
 func main() {
-	pollInterval := 2 * time.Second
-	reportInterval := 10 * time.Second
-	serverAddress := "http://localhost:8080"
+	serverAddress := flag.String("a", "localhost:8080", "HTTP server address")
+	reportInterval := flag.Int("r", 10, "Report interval in seconds")
+	pollInterval := flag.Int("p", 2, "Poll interval in seconds")
+	flag.Parse()
+
+	if flag.NArg() > 0 {
+		log.Fatalf("Unknown argument: %s", flag.Arg(0))
+	}
+
+	pollDuration := time.Duration(*pollInterval) * time.Second
+	reportDuration := time.Duration(*reportInterval) * time.Second
 
 	pollCount := int64(0)
 
-	metricsTicker := time.NewTicker(pollInterval)
-	reportTicker := time.NewTicker(reportInterval)
+	metricsTicker := time.NewTicker(pollDuration)
+	reportTicker := time.NewTicker(reportDuration)
 	defer metricsTicker.Stop()
 	defer reportTicker.Stop()
 
@@ -79,7 +88,7 @@ func main() {
 					continue
 				}
 
-				url := fmt.Sprintf("%s/update/%s/%s/%s", serverAddress, metricType, name, valueStr)
+				url := fmt.Sprintf("http://%s/update/%s/%s/%s", *serverAddress, metricType, name, valueStr)
 				req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer([]byte{}))
 				if err != nil {
 					log.Printf("Failed to create request: %v\n", err)

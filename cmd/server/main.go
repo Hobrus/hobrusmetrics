@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 
 	"github.com/Hobrus/hobrusmetrics.git/internal/handlers"
@@ -10,6 +11,13 @@ import (
 )
 
 func main() {
+	serverAddress := flag.String("a", "localhost:8080", "HTTP server address")
+	flag.Parse()
+
+	if flag.NArg() > 0 {
+		log.Fatalf("Unknown argument: %s", flag.Arg(0))
+	}
+
 	var storage repositories.Storage = service.NewMemStorage()
 	metricsService := &service.MetricsService{Storage: storage}
 	handler := handlers.NewHandler(metricsService)
@@ -18,8 +26,8 @@ func main() {
 
 	handler.SetupRoutes(router)
 
-	log.Println("Сервер запущен на :8080")
-	if err := router.Run(":8080"); err != nil {
-		log.Fatalf("Не удалось запустить сервер: %v\n", err)
+	log.Printf("Server is running on %s\n", *serverAddress)
+	if err := router.Run(*serverAddress); err != nil {
+		log.Fatalf("Failed to start server: %v\n", err)
 	}
 }
