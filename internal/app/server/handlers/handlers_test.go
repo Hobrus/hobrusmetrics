@@ -1,7 +1,8 @@
 package handlers
 
 import (
-	"github.com/Hobrus/hobrusmetrics.git/internal/repository"
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/repository"
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,8 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/Hobrus/hobrusmetrics.git/internal/service"
 )
 
 func setupRouter() (*gin.Engine, *service.MetricsService) {

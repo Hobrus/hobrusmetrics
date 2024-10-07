@@ -3,7 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
-	"github.com/Hobrus/hobrusmetrics.git/internal/repository"
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/repository"
 	"strconv"
 )
 

@@ -1,10 +1,10 @@
 package handlers
 
 import (
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
 	"html/template"
 	"net/http"
 
-	"github.com/Hobrus/hobrusmetrics.git/internal/service"
 	"github.com/gin-gonic/gin"
 )
 

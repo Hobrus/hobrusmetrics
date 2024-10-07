@@ -2,9 +2,9 @@ package main
 
 import (
 	"flag"
-	"github.com/Hobrus/hobrusmetrics.git/internal/handlers"
-	"github.com/Hobrus/hobrusmetrics.git/internal/repository"
-	"github.com/Hobrus/hobrusmetrics.git/internal/service"
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/handlers"
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/repository"
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
 	"github.com/gin-gonic/gin"
 	"log"
 	"os"
