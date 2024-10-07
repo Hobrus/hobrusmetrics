@@ -62,9 +62,9 @@ func (m *Metrics) GetAll() map[string]interface{} {
 	m.RLock()
 	defer m.RUnlock()
 
-	copy := make(map[string]interface{})
+	localCopy := make(map[string]interface{})
 	for k, v := range m.Data {
-		copy[k] = v
+		localCopy[k] = v
 	}
-	return copy
+	return localCopy
 }
