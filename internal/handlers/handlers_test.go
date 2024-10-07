@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"github.com/Hobrus/hobrusmetrics.git/internal/repository"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,7 +16,7 @@ import (
 func setupRouter() (*gin.Engine, *service.MetricsService) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	var storage repository.Storage = service.NewMemStorage()
+	var storage repository.Storage = repository.NewMemStorage()
 	metricsService := &service.MetricsService{Storage: storage}
 	handler := NewHandler(metricsService)
 	handler.SetupRoutes(router)
