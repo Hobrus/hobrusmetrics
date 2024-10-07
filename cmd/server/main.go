@@ -22,7 +22,7 @@ func main() {
 		log.Fatalf("Unknown argument: %s", flag.Arg(0))
 	}
 
-	var storage repository.Storage = service.NewMemStorage()
+	var storage repository.Storage = repository.NewMemStorage()
 	metricsService := &service.MetricsService{Storage: storage}
 	handler := handlers.NewHandler(metricsService)
 
