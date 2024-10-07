@@ -3,13 +3,12 @@ package service
 import (
 	"errors"
 	"fmt"
+	"github.com/Hobrus/hobrusmetrics.git/internal/repository"
 	"strconv"
-
-	"github.com/Hobrus/hobrusmetrics.git/internal/repositories"
 )
 
 type MetricsService struct {
-	Storage repositories.Storage
+	Storage repository.Storage
 }
 
 func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue string) error {
@@ -23,13 +22,13 @@ func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue strin
 		if err != nil {
 			return fmt.Errorf("invalid gauge value: %w", err)
 		}
-		ms.Storage.UpdateGauge(metricName, repositories.Gauge(value))
+		ms.Storage.UpdateGauge(metricName, repository.Gauge(value))
 	case "counter":
 		value, err := strconv.ParseInt(metricValue, 10, 64)
 		if err != nil {
 			return fmt.Errorf("invalid counter value: %w", err)
 		}
-		ms.Storage.UpdateCounter(metricName, repositories.Counter(value))
+		ms.Storage.UpdateCounter(metricName, repository.Counter(value))
 	default:
 		return errors.New("unsupported metric type")
 	}

@@ -2,13 +2,12 @@ package main
 
 import (
 	"flag"
-	"log"
-	"os"
-
 	"github.com/Hobrus/hobrusmetrics.git/internal/handlers"
-	"github.com/Hobrus/hobrusmetrics.git/internal/repositories"
+	"github.com/Hobrus/hobrusmetrics.git/internal/repository"
 	"github.com/Hobrus/hobrusmetrics.git/internal/service"
 	"github.com/gin-gonic/gin"
+	"log"
+	"os"
 )
 
 func main() {
@@ -23,7 +22,7 @@ func main() {
 		log.Fatalf("Unknown argument: %s", flag.Arg(0))
 	}
 
-	var storage repositories.Storage = service.NewMemStorage()
+	var storage repository.Storage = service.NewMemStorage()
 	metricsService := &service.MetricsService{Storage: storage}
 	handler := handlers.NewHandler(metricsService)
 

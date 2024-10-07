@@ -9,14 +9,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Hobrus/hobrusmetrics.git/internal/repositories"
 	"github.com/Hobrus/hobrusmetrics.git/internal/service"
 )
 
 func setupRouter() (*gin.Engine, *service.MetricsService) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	var storage repositories.Storage = service.NewMemStorage()
+	var storage repository.Storage = service.NewMemStorage()
 	metricsService := &service.MetricsService{Storage: storage}
 	handler := NewHandler(metricsService)
 	handler.SetupRoutes(router)
