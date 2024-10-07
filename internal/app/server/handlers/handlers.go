@@ -1,12 +1,16 @@
 package handlers
 
 import (
+	"embed"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
 	"html/template"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
+
+//go:embed templates/*
+var templatesFS embed.FS
 
 type Handler struct {
 	ms *service.MetricsService
@@ -52,18 +56,8 @@ func (h *Handler) getValueHandler(c *gin.Context) {
 func (h *Handler) getAllMetricsHandler(c *gin.Context) {
 	metrics := h.ms.GetAllMetrics()
 
-	tmpl, err := template.New("metrics").Parse(`
-    <html>
-        <body>
-            <h1>Metrics</h1>
-            <ul>
-                {{range $name, $value := .}}
-                    <li>{{$name}}: {{$value}}</li>
-                {{end}}
-            </ul>
-        </body>
-    </html>
-    `)
+	// Parse the embedded template
+	tmpl, err := template.ParseFS(templatesFS, "templates/metrics.html")
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Error rendering template")
 		return

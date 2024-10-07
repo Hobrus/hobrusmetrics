@@ -1,0 +1,10 @@
+<html>
+    <body>
+        <h1>Metrics</h1>
+        <ul>
+            {{range $name, $value := .}}
+                <li>{{$name}}: {{$value}}</li>
+            {{end}}
+        </ul>
+    </body>
+</html>
