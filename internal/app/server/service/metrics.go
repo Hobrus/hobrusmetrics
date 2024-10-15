@@ -7,6 +7,11 @@ import (
 	"strconv"
 )
 
+const (
+	GaugeMetric   = "gauge"
+	CounterMetric = "counter"
+)
+
 type MetricsService struct {
 	Storage repository.Storage
 }
@@ -17,13 +22,13 @@ func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue strin
 	}
 
 	switch metricType {
-	case "gauge":
+	case GaugeMetric:
 		value, err := strconv.ParseFloat(metricValue, 64)
 		if err != nil {
 			return fmt.Errorf("invalid gauge value: %w", err)
 		}
 		ms.Storage.UpdateGauge(metricName, repository.Gauge(value))
-	case "counter":
+	case CounterMetric:
 		value, err := strconv.ParseInt(metricValue, 10, 64)
 		if err != nil {
 			return fmt.Errorf("invalid counter value: %w", err)
@@ -37,11 +42,11 @@ func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue strin
 
 func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string, error) {
 	switch metricType {
-	case "gauge":
+	case GaugeMetric:
 		if value, ok := ms.Storage.GetGauge(metricName); ok {
 			return strconv.FormatFloat(float64(value), 'f', -1, 64), nil
 		}
-	case "counter":
+	case CounterMetric:
 		if value, ok := ms.Storage.GetCounter(metricName); ok {
 			return fmt.Sprintf("%d", value), nil
 		}
