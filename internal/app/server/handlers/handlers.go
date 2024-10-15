@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-//go:embed templates/*
+//go:embed template/*
 var templatesFS embed.FS
 
 type Handler struct {
