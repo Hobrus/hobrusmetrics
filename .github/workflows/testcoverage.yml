@@ -1,6 +1,10 @@
-name: Test and coverage
+name: Test, Lint, and Coverage
 
-on: [push, pull_request]
+on:
+  pull_request:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
@@ -12,6 +16,10 @@ jobs:
       - uses: actions/setup-go@v2
         with:
           go-version: '1.22'
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: v1.53.3 # Вы можете указать 'latest' для последней версии
       - name: Run coverage
         run: go test ./... -race -coverprofile=coverage.out -covermode=atomic
       - name: Upload coverage to Codecov
