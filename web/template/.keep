@@ -1,3 +1,0 @@
-// content holds our static web server content.
-//go:embed template/*
-var Content embed.FS

@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-//go:embed web/templates/*.html
+//go:embed template/*.html
 var templatesFS embed.FS
 
 type Handler struct {
@@ -57,7 +57,7 @@ func (h *Handler) getAllMetricsHandler(c *gin.Context) {
 	metrics := h.ms.GetAllMetrics()
 
 	// Parse the embedded template
-	tmpl, err := template.ParseFS(templatesFS, "web/template/metrics.html")
+	tmpl, err := template.ParseFS(templatesFS, "template/metrics.html")
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Error rendering template")
 		return
