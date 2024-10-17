@@ -48,7 +48,7 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 		}
 	case CounterMetric:
 		if value, ok := ms.Storage.GetCounter(metricName); ok {
-			return fmt.Sprintf("%d", value), nil
+			return strconv.FormatInt(int64(value), 10), nil
 		}
 	default:
 		return "", errors.New("unsupported metric type")
