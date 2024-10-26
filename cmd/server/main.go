@@ -2,15 +2,25 @@ package main
 
 import (
 	"flag"
+	"os"
+
+	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
+
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
+
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/handlers"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/repository"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
-	"github.com/gin-gonic/gin"
-	"log"
-	"os"
 )
 
 func main() {
+	// Initialize logger
+	logger := logrus.New()
+	logger.SetFormatter(&logrus.JSONFormatter{})
+	logger.SetOutput(os.Stdout)
+	logger.SetLevel(logrus.InfoLevel)
+
 	serverAddress := flag.String("a", "localhost:8080", "HTTP server address")
 	flag.Parse()
 
@@ -19,19 +29,22 @@ func main() {
 	}
 
 	if flag.NArg() > 0 {
-		log.Fatalf("Unknown argument: %s", flag.Arg(0))
+		logger.Fatalf("Unknown argument: %s", flag.Arg(0))
 	}
 
 	var storage repository.Storage = repository.NewMemStorage()
 	metricsService := &service.MetricsService{Storage: storage}
 	handler := handlers.NewHandler(metricsService)
 
-	router := gin.Default()
+	// Create router with logging middleware
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(middleware.LoggingMiddleware(logger))
 
 	handler.SetupRoutes(router)
 
-	log.Printf("Server is running on %s\n", *serverAddress)
+	logger.Infof("Server is running on %s", *serverAddress)
 	if err := router.Run(*serverAddress); err != nil {
-		log.Fatalf("Failed to start server: %v\n", err)
+		logger.Fatalf("Failed to start server: %v", err)
 	}
 }

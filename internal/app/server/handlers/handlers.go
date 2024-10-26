@@ -22,9 +22,14 @@ func NewHandler(ms *service.MetricsService) *Handler {
 }
 
 func (h *Handler) SetupRoutes(router *gin.Engine) {
+	// Existing routes for backward compatibility
 	router.POST("/update/:type/:name/:value", h.updateHandler)
 	router.GET("/value/:type/:name", h.getValueHandler)
 	router.GET("/", h.getAllMetricsHandler)
+
+	// New JSON API routes
+	router.POST("/update/", h.updateJSONMetric)
+	router.POST("/value/", h.getJSONMetric)
 }
 
 func (h *Handler) updateHandler(c *gin.Context) {
