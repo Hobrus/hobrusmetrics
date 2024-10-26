@@ -2,10 +2,11 @@
 package agent
 
 import (
+	"time"
+
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/agent/collector"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/agent/config"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/agent/sender"
-	"time"
 )
 
 type Agent struct {

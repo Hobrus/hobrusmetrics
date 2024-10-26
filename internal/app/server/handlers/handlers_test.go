@@ -1,11 +1,12 @@
 package handlers
 
 import (
-	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/repository"
-	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/repository"
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
