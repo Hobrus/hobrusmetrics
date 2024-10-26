@@ -1,19 +1,58 @@
 package handlers
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/models"
 )
 
-func (h *Handler) updateJSONMetric(c *gin.Context) {
-	var metric models.Metrics
+type Metrics struct {
+	ID    string   `json:"id"`              // metric name
+	MType string   `json:"type"`            // gauge or counter
+	Delta *int64   `json:"delta,omitempty"` // counter value
+	Value *float64 `json:"value,omitempty"` // gauge value
+}
 
-	if err := c.ShouldBindJSON(&metric); err != nil {
+func parseInt64(s string) int64 {
+	v, _ := strconv.ParseInt(s, 10, 64)
+	return v
+}
+
+func parseFloat64(s string) float64 {
+	v, _ := strconv.ParseFloat(s, 64)
+	return v
+}
+
+func format64(v int64) string {
+	return strconv.FormatInt(v, 10)
+}
+
+func formatFloat64(v float64) string {
+	return strconv.FormatFloat(v, 'f', -1, 64)
+}
+
+func (h *Handler) updateJSONMetric(c *gin.Context) {
+	var metric Metrics
+
+	// Read the body
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+		return
+	}
+
+	// Parse JSON using encoding/json
+	if err := json.Unmarshal(body, &metric); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON format"})
+		return
+	}
+
+	// Validate required fields
+	if metric.ID == "" || metric.MType == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id and type are required"})
 		return
 	}
 
@@ -41,14 +80,14 @@ func (h *Handler) updateJSONMetric(c *gin.Context) {
 		return
 	}
 
-	// Return the updated value
+	// Get updated value
 	updatedValue, err := h.ms.GetMetricValue(metric.MType, metric.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get updated value"})
 		return
 	}
 
-	result := models.Metrics{
+	result := Metrics{
 		ID:    metric.ID,
 		MType: metric.MType,
 	}
@@ -62,13 +101,29 @@ func (h *Handler) updateJSONMetric(c *gin.Context) {
 		result.Value = &floatVal
 	}
 
-	c.JSON(http.StatusOK, result)
+	// Use encoding/json for response
+	response, err := json.Marshal(result)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to encode response"})
+		return
+	}
+
+	c.Header("Content-Type", "application/json")
+	c.String(http.StatusOK, string(response))
 }
 
 func (h *Handler) getJSONMetric(c *gin.Context) {
-	var metric models.Metrics
+	var metric Metrics
 
-	if err := c.ShouldBindJSON(&metric); err != nil {
+	// Read the body
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+		return
+	}
+
+	// Parse JSON using encoding/json
+	if err := json.Unmarshal(body, &metric); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON format"})
 		return
 	}
@@ -84,7 +139,7 @@ func (h *Handler) getJSONMetric(c *gin.Context) {
 		return
 	}
 
-	result := models.Metrics{
+	result := Metrics{
 		ID:    metric.ID,
 		MType: metric.MType,
 	}
@@ -98,23 +153,13 @@ func (h *Handler) getJSONMetric(c *gin.Context) {
 		result.Value = &floatVal
 	}
 
-	c.JSON(http.StatusOK, result)
-}
+	// Use encoding/json for response
+	response, err := json.Marshal(result)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to encode response"})
+		return
+	}
 
-func parseInt64(s string) int64 {
-	val, _ := strconv.ParseInt(s, 10, 64)
-	return val
-}
-
-func parseFloat64(s string) float64 {
-	val, _ := strconv.ParseFloat(s, 64)
-	return val
-}
-
-func formatFloat64(v float64) string {
-	return strconv.FormatFloat(v, 'f', -1, 64)
-}
-
-func format64(v int64) string {
-	return strconv.FormatInt(v, 10)
+	c.Header("Content-Type", "application/json")
+	c.String(http.StatusOK, string(response))
 }
