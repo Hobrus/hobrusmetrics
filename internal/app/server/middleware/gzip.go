@@ -31,23 +31,39 @@ func (g *gzipWriter) Pusher() http.Pusher {
 }
 
 func shouldGzip(c *gin.Context) bool {
+	// Check if client accepts gzip encoding
 	if !strings.Contains(strings.ToLower(c.Request.Header.Get("Accept-Encoding")), "gzip") {
 		return false
 	}
 
+	// Check content type after the next handlers have run
 	contentType := c.Writer.Header().Get("Content-Type")
-	switch {
-	case strings.Contains(contentType, "application/json"):
-		return true
-	case strings.Contains(contentType, "text/html"):
-		return true
-	case contentType == "":
-		// If content type not yet set, check path for typical JSON endpoints
-		if strings.Contains(c.Request.URL.Path, "/update/") ||
-			strings.Contains(c.Request.URL.Path, "/value/") {
+
+	// List of content types that should be compressed
+	compressibleTypes := []string{
+		"application/json",
+		"text/html",
+		"text/plain",
+		"text/xml",
+		"text/css",
+		"text/javascript",
+		"application/javascript",
+		"application/x-javascript",
+	}
+
+	// Check if content type matches any compressible type
+	for _, t := range compressibleTypes {
+		if strings.Contains(contentType, t) {
 			return true
 		}
 	}
+
+	// If content type is not set yet but path suggests JSON
+	if contentType == "" && (strings.Contains(c.Request.URL.Path, "/update/") ||
+		strings.Contains(c.Request.URL.Path, "/value/")) {
+		return true
+	}
+
 	return false
 }
 
@@ -74,21 +90,24 @@ func GzipMiddleware() gin.HandlerFunc {
 			c.Request.ContentLength = int64(len(body))
 		}
 
+		// Process the request through other handlers first
+		c.Next()
+
+		// Check if response should be gzipped
 		if !shouldGzip(c) {
-			c.Next()
 			return
 		}
 
 		gz := gzip.NewWriter(c.Writer)
 		defer gz.Close()
 
-		c.Writer = &gzipWriter{
+		gzipWriter := &gzipWriter{
 			ResponseWriter: c.Writer,
 			writer:         gz,
 		}
+
+		c.Writer = gzipWriter
 		c.Header("Content-Encoding", "gzip")
 		c.Header("Vary", "Accept-Encoding")
-
-		c.Next()
 	}
 }
