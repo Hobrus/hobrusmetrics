@@ -37,15 +37,15 @@ func shouldCompress(c *gin.Context) bool {
 func GzipMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Handle incoming compressed data
-		if c.Request.Header.Get("Content-Encoding") == "gzip" {
-			gz, err := gzip.NewReader(c.Request.Body)
+		if strings.Contains(c.Request.Header.Get("Content-Encoding"), "gzip") {
+			reader, err := gzip.NewReader(c.Request.Body)
 			if err != nil {
 				c.AbortWithStatus(http.StatusBadRequest)
 				return
 			}
-			defer gz.Close()
+			defer reader.Close()
 
-			body, err := io.ReadAll(gz)
+			body, err := io.ReadAll(reader)
 			if err != nil {
 				c.AbortWithStatus(http.StatusBadRequest)
 				return
@@ -56,21 +56,29 @@ func GzipMiddleware() gin.HandlerFunc {
 			c.Request.ContentLength = int64(len(body))
 		}
 
-		// Wait for handlers to process and set content type
-		c.Next()
-
 		if !shouldCompress(c) {
+			c.Next()
 			return
 		}
 
-		gz := gzip.NewWriter(c.Writer)
+		gz, err := gzip.NewWriterLevel(c.Writer, gzip.BestCompression)
+		if err != nil {
+			c.Next()
+			return
+		}
 		defer gz.Close()
 
 		c.Writer = &gzipWriter{
 			ResponseWriter: c.Writer,
 			writer:         gz,
 		}
+
 		c.Header("Content-Encoding", "gzip")
 		c.Header("Vary", "Accept-Encoding")
+
+		c.Next()
+
+		// Ensure everything is written before closing
+		gz.Flush()
 	}
 }

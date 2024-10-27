@@ -31,6 +31,7 @@ func main() {
 		logger.Fatalf("Unknown argument: %s", flag.Arg(0))
 	}
 
+	// Setup storage and services
 	var storage repository.Storage = repository.NewMemStorage()
 	metricsService := &service.MetricsService{Storage: storage}
 	handler := handlers.NewHandler(metricsService)
@@ -38,13 +39,15 @@ func main() {
 	// Create router with middleware
 	router := gin.New()
 
-	// Important: Add gzip middleware before others
-	router.Use(middleware.GzipMiddleware())
-	router.Use(gin.Recovery())
-	router.Use(middleware.LoggingMiddleware(logger))
+	// Add middlewares in the correct order
+	router.Use(middleware.GzipMiddleware())          // Gzip middleware first
+	router.Use(gin.Recovery())                       // Then recovery
+	router.Use(middleware.LoggingMiddleware(logger)) // Then logging
 
+	// Setup routes
 	handler.SetupRoutes(router)
 
+	// Start server
 	logger.Infof("Server is running on %s", *serverAddress)
 	if err := router.Run(*serverAddress); err != nil {
 		logger.Fatalf("Failed to start server: %v", err)
