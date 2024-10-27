@@ -22,52 +22,18 @@ func (g *gzipWriter) WriteString(s string) (int, error) {
 	return g.writer.Write([]byte(s))
 }
 
-// Implement the Pusher interface
-func (g *gzipWriter) Pusher() http.Pusher {
-	if pusher, ok := g.ResponseWriter.(http.Pusher); ok {
-		return pusher
-	}
-	return nil
-}
-
-func shouldGzip(c *gin.Context) bool {
-	// Check if client accepts gzip encoding
+func shouldCompress(c *gin.Context) bool {
 	if !strings.Contains(strings.ToLower(c.Request.Header.Get("Accept-Encoding")), "gzip") {
 		return false
 	}
 
-	// Check content type after the next handlers have run
 	contentType := c.Writer.Header().Get("Content-Type")
-
-	// List of content types that should be compressed
-	compressibleTypes := []string{
-		"application/json",
-		"text/html",
-		"text/plain",
-		"text/xml",
-		"text/css",
-		"text/javascript",
-		"application/javascript",
-		"application/x-javascript",
-	}
-
-	// Check if content type matches any compressible type
-	for _, t := range compressibleTypes {
-		if strings.Contains(contentType, t) {
-			return true
-		}
-	}
-
-	// If content type is not set yet but path suggests JSON
-	if contentType == "" && (strings.Contains(c.Request.URL.Path, "/update/") ||
-		strings.Contains(c.Request.URL.Path, "/value/")) {
-		return true
-	}
-
-	return false
+	return strings.Contains(contentType, "application/json") ||
+		strings.Contains(contentType, "text/html") ||
+		(contentType == "" && (strings.Contains(c.Request.URL.Path, "/update/") ||
+			strings.Contains(c.Request.URL.Path, "/value/")))
 }
 
-// GzipMiddleware handles both compression and decompression
 func GzipMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Handle incoming compressed data
@@ -90,23 +56,20 @@ func GzipMiddleware() gin.HandlerFunc {
 			c.Request.ContentLength = int64(len(body))
 		}
 
-		// Process the request through other handlers first
+		// Wait for handlers to process and set content type
 		c.Next()
 
-		// Check if response should be gzipped
-		if !shouldGzip(c) {
+		if !shouldCompress(c) {
 			return
 		}
 
 		gz := gzip.NewWriter(c.Writer)
 		defer gz.Close()
 
-		gzipWriter := &gzipWriter{
+		c.Writer = &gzipWriter{
 			ResponseWriter: c.Writer,
 			writer:         gz,
 		}
-
-		c.Writer = gzipWriter
 		c.Header("Content-Encoding", "gzip")
 		c.Header("Vary", "Accept-Encoding")
 	}

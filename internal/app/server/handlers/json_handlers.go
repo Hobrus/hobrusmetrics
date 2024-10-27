@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -16,35 +17,18 @@ type Metrics struct {
 	Value *float64 `json:"value,omitempty"` // gauge value
 }
 
-func parseInt64(s string) int64 {
-	v, _ := strconv.ParseInt(s, 10, 64)
-	return v
-}
-
-func parseFloat64(s string) float64 {
-	v, _ := strconv.ParseFloat(s, 64)
-	return v
-}
-
-func format64(v int64) string {
-	return strconv.FormatInt(v, 10)
-}
-
-func formatFloat64(v float64) string {
-	return strconv.FormatFloat(v, 'f', -1, 64)
-}
-
 func (h *Handler) updateJSONMetric(c *gin.Context) {
 	var metric Metrics
 
-	// Read the body
+	// Read the request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
 		return
 	}
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
 
-	// Parse JSON using encoding/json
+	// Parse JSON
 	if err := json.Unmarshal(body, &metric); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON format"})
 		return
@@ -63,13 +47,13 @@ func (h *Handler) updateJSONMetric(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "delta is required for counter"})
 			return
 		}
-		value = format64(*metric.Delta)
+		value = strconv.FormatInt(*metric.Delta, 10)
 	case "gauge":
 		if metric.Value == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "value is required for gauge"})
 			return
 		}
-		value = formatFloat64(*metric.Value)
+		value = strconv.FormatFloat(*metric.Value, 'f', -1, 64)
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid metric type"})
 		return
@@ -87,42 +71,35 @@ func (h *Handler) updateJSONMetric(c *gin.Context) {
 		return
 	}
 
-	result := Metrics{
+	response := Metrics{
 		ID:    metric.ID,
 		MType: metric.MType,
 	}
 
 	switch metric.MType {
 	case "counter":
-		deltaVal := parseInt64(updatedValue)
-		result.Delta = &deltaVal
+		delta, _ := strconv.ParseInt(updatedValue, 10, 64)
+		response.Delta = &delta
 	case "gauge":
-		floatVal := parseFloat64(updatedValue)
-		result.Value = &floatVal
+		value, _ := strconv.ParseFloat(updatedValue, 64)
+		response.Value = &value
 	}
 
-	// Use encoding/json for response
-	response, err := json.Marshal(result)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to encode response"})
-		return
-	}
-
-	c.Header("Content-Type", "application/json")
-	c.String(http.StatusOK, string(response))
+	c.JSON(http.StatusOK, response)
 }
 
 func (h *Handler) getJSONMetric(c *gin.Context) {
 	var metric Metrics
 
-	// Read the body
+	// Read the request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
 		return
 	}
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
 
-	// Parse JSON using encoding/json
+	// Parse JSON
 	if err := json.Unmarshal(body, &metric); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON format"})
 		return
@@ -139,27 +116,19 @@ func (h *Handler) getJSONMetric(c *gin.Context) {
 		return
 	}
 
-	result := Metrics{
+	response := Metrics{
 		ID:    metric.ID,
 		MType: metric.MType,
 	}
 
 	switch metric.MType {
 	case "counter":
-		deltaVal := parseInt64(value)
-		result.Delta = &deltaVal
+		delta, _ := strconv.ParseInt(value, 10, 64)
+		response.Delta = &delta
 	case "gauge":
-		floatVal := parseFloat64(value)
-		result.Value = &floatVal
+		floatVal, _ := strconv.ParseFloat(value, 64)
+		response.Value = &floatVal
 	}
 
-	// Use encoding/json for response
-	response, err := json.Marshal(result)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to encode response"})
-		return
-	}
-
-	c.Header("Content-Type", "application/json")
-	c.String(http.StatusOK, string(response))
+	c.JSON(http.StatusOK, response)
 }
