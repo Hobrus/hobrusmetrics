@@ -3,11 +3,18 @@ package sender
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 )
+
+type Metrics struct {
+	ID    string   `json:"id"`
+	MType string   `json:"type"`
+	Delta *int64   `json:"delta,omitempty"`
+	Value *float64 `json:"value,omitempty"`
+}
 
 type Sender struct {
 	ServerAddress string
@@ -25,8 +32,7 @@ func compressData(data []byte) (*bytes.Buffer, error) {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 
-	_, err := gz.Write(data)
-	if err != nil {
+	if _, err := gz.Write(data); err != nil {
 		return nil, fmt.Errorf("failed to write to gzip writer: %w", err)
 	}
 
@@ -40,56 +46,64 @@ func compressData(data []byte) (*bytes.Buffer, error) {
 func (s *Sender) Send(metrics map[string]interface{}) {
 	for name, value := range metrics {
 		var metricType string
-		var valueStr string
+		var metric Metrics
 
 		switch v := value.(type) {
 		case int64:
 			metricType = "counter"
-			valueStr = strconv.FormatInt(v, 10)
+			delta := v
+			metric = Metrics{
+				ID:    name,
+				MType: metricType,
+				Delta: &delta,
+			}
 		case float64:
 			metricType = "gauge"
-			valueStr = strconv.FormatFloat(v, 'f', -1, 64)
+			val := v
+			metric = Metrics{
+				ID:    name,
+				MType: metricType,
+				Value: &val,
+			}
 		default:
 			log.Printf("Unsupported metric type for %s: %T\n", name, value)
 			continue
 		}
 
-		url := fmt.Sprintf("http://%s/update/%s/%s/%s", s.ServerAddress, metricType, name, valueStr)
-
-		// Create empty body for POST request
-		body := &bytes.Buffer{}
-
-		// Compress the body if it's not empty
-		if body.Len() > 0 {
-			compressedBody, err := compressData(body.Bytes())
-			if err != nil {
-				log.Printf("Failed to compress request body: %v\n", err)
-				continue
-			}
-			body = compressedBody
+		// Сериализуем метрику в JSON
+		jsonData, err := json.Marshal(metric)
+		if err != nil {
+			log.Printf("Failed to marshal metric %s: %v\n", name, err)
+			continue
 		}
 
-		req, err := http.NewRequest(http.MethodPost, url, body)
+		// Сжимаем JSON данные
+		compressedData, err := compressData(jsonData)
+		if err != nil {
+			log.Printf("Failed to compress metric data %s: %v\n", name, err)
+			continue
+		}
+
+		// Создаем запрос с сжатыми данными
+		url := fmt.Sprintf("http://%s/update/", s.ServerAddress)
+		req, err := http.NewRequest(http.MethodPost, url, compressedData)
 		if err != nil {
 			log.Printf("Failed to create request: %v\n", err)
 			continue
 		}
 
-		// Set appropriate headers
-		req.Header.Set("Content-Type", "text/plain")
-		if body.Len() > 0 {
-			req.Header.Set("Content-Encoding", "gzip")
-		}
+		// Устанавливаем заголовки
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Encoding", "gzip")
+		req.Header.Set("Accept-Encoding", "gzip")
 
+		// Отправляем запрос
 		resp, err := s.Client.Do(req)
 		if err != nil {
 			log.Printf("Failed to send metric %s: %v\n", name, err)
 			continue
 		}
-		err = resp.Body.Close()
-		if err != nil {
-			log.Printf("Failed to close response body: %v\n", err)
-			continue
-		}
+
+		resp.Body.Close()
 	}
 }

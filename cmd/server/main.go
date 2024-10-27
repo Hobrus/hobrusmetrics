@@ -37,9 +37,11 @@ func main() {
 
 	// Create router with middleware
 	router := gin.New()
+
+	// Important: Add gzip middleware before others
+	router.Use(middleware.GzipMiddleware())
 	router.Use(gin.Recovery())
 	router.Use(middleware.LoggingMiddleware(logger))
-	router.Use(middleware.GzipMiddleware()) // Add gzip middleware
 
 	handler.SetupRoutes(router)
 
