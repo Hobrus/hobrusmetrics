@@ -23,15 +23,24 @@ func (g *gzipWriter) WriteString(s string) (int, error) {
 }
 
 func shouldCompress(c *gin.Context) bool {
+	// Check if client accepts gzip encoding
 	if !strings.Contains(strings.ToLower(c.Request.Header.Get("Accept-Encoding")), "gzip") {
 		return false
 	}
 
+	// Get the content type, defaulting to the one that will be set
 	contentType := c.Writer.Header().Get("Content-Type")
+	if contentType == "" {
+		contentType = c.Request.Header.Get("Accept")
+	}
+
+	// Check if content type should be compressed
 	return strings.Contains(contentType, "application/json") ||
 		strings.Contains(contentType, "text/html") ||
-		(contentType == "" && (strings.Contains(c.Request.URL.Path, "/update/") ||
-			strings.Contains(c.Request.URL.Path, "/value/")))
+		strings.Contains(contentType, "text/plain") ||
+		strings.Contains(c.Request.URL.Path, "/update/") ||
+		strings.Contains(c.Request.URL.Path, "/value/") ||
+		c.Request.URL.Path == "/"
 }
 
 func GzipMiddleware() gin.HandlerFunc {
@@ -56,29 +65,26 @@ func GzipMiddleware() gin.HandlerFunc {
 			c.Request.ContentLength = int64(len(body))
 		}
 
-		if !shouldCompress(c) {
-			c.Next()
-			return
-		}
+		if shouldCompress(c) {
+			gz, err := gzip.NewWriterLevel(c.Writer, gzip.BestCompression)
+			if err != nil {
+				c.Next()
+				return
+			}
 
-		gz, err := gzip.NewWriterLevel(c.Writer, gzip.BestCompression)
-		if err != nil {
-			c.Next()
-			return
-		}
-		defer gz.Close()
+			c.Writer = &gzipWriter{
+				ResponseWriter: c.Writer,
+				writer:         gz,
+			}
 
-		c.Writer = &gzipWriter{
-			ResponseWriter: c.Writer,
-			writer:         gz,
-		}
+			c.Header("Content-Encoding", "gzip")
+			c.Header("Vary", "Accept-Encoding")
 
-		c.Header("Content-Encoding", "gzip")
-		c.Header("Vary", "Accept-Encoding")
+			defer func() {
+				gz.Close()
+			}()
+		}
 
 		c.Next()
-
-		// Ensure everything is written before closing
-		gz.Flush()
 	}
 }
