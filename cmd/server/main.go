@@ -7,9 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
-	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
-
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/handlers"
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/repository"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
 )
@@ -36,10 +35,11 @@ func main() {
 	metricsService := &service.MetricsService{Storage: storage}
 	handler := handlers.NewHandler(metricsService)
 
-	// Create router with logging middleware
+	// Create router with middleware
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(middleware.LoggingMiddleware(logger))
+	router.Use(middleware.GzipMiddleware()) // Add gzip middleware
 
 	handler.SetupRoutes(router)
 
