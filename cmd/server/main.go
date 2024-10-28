@@ -1,12 +1,17 @@
 package main
 
 import (
-	"flag"
+	"context"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/config"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/handlers"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/repository"
@@ -20,36 +25,62 @@ func main() {
 	logger.SetOutput(os.Stdout)
 	logger.SetLevel(logrus.InfoLevel)
 
-	serverAddress := flag.String("a", "localhost:8080", "HTTP server address")
-	flag.Parse()
+	// Load configuration
+	cfg := config.NewConfig()
 
-	if envAddress := os.Getenv("ADDRESS"); envAddress != "" {
-		*serverAddress = envAddress
+	// Setup storage
+	storage, err := repository.NewFileBackedStorage(cfg.FileStoragePath, cfg.StoreInterval, cfg.Restore, logger)
+	if err != nil {
+		logger.Fatalf("Failed to initialize storage: %v", err)
 	}
 
-	if flag.NArg() > 0 {
-		logger.Fatalf("Unknown argument: %s", flag.Arg(0))
-	}
-
-	// Setup storage and services
-	var storage repository.Storage = repository.NewMemStorage()
+	// Setup services and handlers
 	metricsService := &service.MetricsService{Storage: storage}
 	handler := handlers.NewHandler(metricsService)
 
 	// Create router with middleware
 	router := gin.New()
-
-	// Add middlewares in the correct order
-	router.Use(middleware.GzipMiddleware())          // Gzip middleware first
-	router.Use(gin.Recovery())                       // Then recovery
-	router.Use(middleware.LoggingMiddleware(logger)) // Then logging
+	router.Use(middleware.GzipMiddleware())
+	router.Use(gin.Recovery())
+	router.Use(middleware.LoggingMiddleware(logger))
 
 	// Setup routes
 	handler.SetupRoutes(router)
 
+	// Setup graceful shutdown
+	srv := &http.Server{
+		Addr:    cfg.ServerAddress,
+		Handler: router,
+	}
+
+	// Handle shutdown signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		logger.Info("Shutting down server...")
+
+		// Create shutdown context with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// Shutdown HTTP server
+		if err := srv.Shutdown(ctx); err != nil {
+			logger.Errorf("Server shutdown error: %v", err)
+		}
+
+		// Save metrics before exit
+		if err := storage.Shutdown(); err != nil {
+			logger.Errorf("Failed to save metrics during shutdown: %v", err)
+		}
+
+		os.Exit(0)
+	}()
+
 	// Start server
-	logger.Infof("Server is running on %s", *serverAddress)
-	if err := router.Run(*serverAddress); err != nil {
+	logger.Infof("Server is running on %s", cfg.ServerAddress)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatalf("Failed to start server: %v", err)
 	}
 }
