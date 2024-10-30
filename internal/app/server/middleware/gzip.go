@@ -3,11 +3,26 @@ package middleware
 import (
 	"compress/gzip"
 	"io"
+	"mime"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
+
+var compressibleMIMETypes = map[string]bool{
+	"text/html":                true,
+	"text/css":                 true,
+	"text/plain":               true,
+	"text/javascript":          true,
+	"application/javascript":   true,
+	"application/x-javascript": true,
+	"application/json":         true,
+	"application/xml":          true,
+	"application/x-yaml":       true,
+	"image/svg+xml":            true,
+}
 
 type gzipWriter struct {
 	gin.ResponseWriter
@@ -23,24 +38,35 @@ func (g *gzipWriter) WriteString(s string) (int, error) {
 }
 
 func shouldCompress(c *gin.Context) bool {
-	// Check if client accepts gzip encoding
+	// 1. Check if client accepts gzip encoding
 	if !strings.Contains(strings.ToLower(c.Request.Header.Get("Accept-Encoding")), "gzip") {
 		return false
 	}
 
-	// Get the content type, defaulting to the one that will be set
+	// 2. Get content type
 	contentType := c.Writer.Header().Get("Content-Type")
 	if contentType == "" {
-		contentType = c.Request.Header.Get("Accept")
+		// Try to detect content type from file extension if present
+		if path := c.Request.URL.Path; path != "" {
+			ext := filepath.Ext(path)
+			if ext != "" {
+				if mimeType := mime.TypeByExtension(ext); mimeType != "" {
+					contentType = mimeType
+				}
+			}
+		}
+
+		// Fallback to Accept header
+		if contentType == "" {
+			contentType = c.Request.Header.Get("Accept")
+		}
 	}
 
-	// Check if content type should be compressed
-	return strings.Contains(contentType, "application/json") ||
-		strings.Contains(contentType, "text/html") ||
-		strings.Contains(contentType, "text/plain") ||
-		strings.Contains(c.Request.URL.Path, "/update/") ||
-		strings.Contains(c.Request.URL.Path, "/value/") ||
-		c.Request.URL.Path == "/"
+	// Extract base MIME type without parameters
+	baseType := strings.Split(contentType, ";")[0]
+
+	// 3. Check if content type is compressible
+	return compressibleMIMETypes[baseType]
 }
 
 func GzipMiddleware() gin.HandlerFunc {
