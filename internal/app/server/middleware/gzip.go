@@ -37,7 +37,7 @@ func (g *gzipWriter) WriteString(s string) (int, error) {
 	return g.writer.Write([]byte(s))
 }
 
-func shouldCompress(c *gin.Context) bool {
+func isGzipCompatible(c *gin.Context) bool {
 	// 1. Check if client accepts gzip encoding
 	if !strings.Contains(strings.ToLower(c.Request.Header.Get("Accept-Encoding")), "gzip") {
 		return false
@@ -91,7 +91,7 @@ func GzipMiddleware() gin.HandlerFunc {
 			c.Request.ContentLength = int64(len(body))
 		}
 
-		if shouldCompress(c) {
+		if isGzipCompatible(c) {
 			gz, err := gzip.NewWriterLevel(c.Writer, gzip.BestCompression)
 			if err != nil {
 				c.Next()
