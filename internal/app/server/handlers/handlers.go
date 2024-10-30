@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"net/http"
 
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
 
 	"github.com/gin-gonic/gin"
@@ -22,14 +23,14 @@ func NewHandler(ms *service.MetricsService) *Handler {
 }
 
 func (h *Handler) SetupRoutes(router *gin.Engine) {
-	// Existing routes for backward compatibility
+	// Legacy routes for backward compatibility
 	router.POST("/update/:type/:name/:value", h.updateHandler)
 	router.GET("/value/:type/:name", h.getValueHandler)
 	router.GET("/", h.getAllMetricsHandler)
 
-	// New JSON API routes
-	router.POST("/update/", h.updateJSONMetric)
-	router.POST("/value/", h.getJSONMetric)
+	// New JSON API routes using middleware
+	router.POST("/update/", middleware.JSONUpdateMiddleware(h.ms))
+	router.POST("/value/", middleware.JSONValueMiddleware(h.ms))
 }
 
 func (h *Handler) updateHandler(c *gin.Context) {
