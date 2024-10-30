@@ -61,21 +61,16 @@ func main() {
 		<-sigChan
 		logger.Info("Shutting down server...")
 
-		// Create shutdown context with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		// Shutdown HTTP server
 		if err := srv.Shutdown(ctx); err != nil {
 			logger.Errorf("Server shutdown error: %v", err)
 		}
 
-		// Save metrics before exit
 		if err := storage.Shutdown(); err != nil {
 			logger.Errorf("Failed to save metrics during shutdown: %v", err)
 		}
-
-		os.Exit(0)
 	}()
 
 	// Start server
