@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/models"
 )
 
 type FileBackedStorage struct {
@@ -16,11 +18,6 @@ type FileBackedStorage struct {
 	stopChan      chan struct{}
 	storeMutex    sync.Mutex
 	logger        *logrus.Logger
-}
-
-type MetricsData struct {
-	Gauges   map[string]Gauge   `json:"gauges"`
-	Counters map[string]Counter `json:"counters"`
 }
 
 func NewFileBackedStorage(filePath string, storeInterval time.Duration, restore bool, logger *logrus.Logger) (*FileBackedStorage, error) {
@@ -38,7 +35,6 @@ func NewFileBackedStorage(filePath string, storeInterval time.Duration, restore 
 		}
 	}
 
-	// Start periodic saving if interval > 0
 	if storeInterval > 0 {
 		go storage.periodicSave()
 	}
@@ -50,12 +46,12 @@ func (s *FileBackedStorage) LoadFromFile() error {
 	data, err := os.ReadFile(s.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil // File doesn't exist yet, not an error
+			return nil
 		}
 		return err
 	}
 
-	var metricsData MetricsData
+	var metricsData models.MetricsData
 	if err := json.Unmarshal(data, &metricsData); err != nil {
 		return err
 	}
@@ -65,12 +61,12 @@ func (s *FileBackedStorage) LoadFromFile() error {
 
 	// Update gauges
 	for name, value := range metricsData.Gauges {
-		s.MemStorage.UpdateGauge(name, value)
+		s.MemStorage.UpdateGauge(name, Gauge(value))
 	}
 
 	// Update counters
 	for name, value := range metricsData.Counters {
-		s.MemStorage.UpdateCounter(name, value)
+		s.MemStorage.UpdateCounter(name, Counter(value))
 	}
 
 	return nil
@@ -80,9 +76,20 @@ func (s *FileBackedStorage) SaveToFile() error {
 	s.storeMutex.Lock()
 	defer s.storeMutex.Unlock()
 
-	metricsData := MetricsData{
-		Gauges:   s.MemStorage.GetAllGauges(),
-		Counters: s.MemStorage.GetAllCounters(),
+	// Convert storage data to models.MetricsData
+	gauges := make(map[string]float64)
+	for k, v := range s.MemStorage.GetAllGauges() {
+		gauges[k] = float64(v)
+	}
+
+	counters := make(map[string]int64)
+	for k, v := range s.MemStorage.GetAllCounters() {
+		counters[k] = int64(v)
+	}
+
+	metricsData := models.MetricsData{
+		Gauges:   gauges,
+		Counters: counters,
 	}
 
 	data, err := json.Marshal(metricsData)
@@ -90,15 +97,13 @@ func (s *FileBackedStorage) SaveToFile() error {
 		return err
 	}
 
-	// Create temporary file
 	tempFile := s.filePath + ".tmp"
 	if err := os.WriteFile(tempFile, data, 0644); err != nil {
 		return err
 	}
 
-	// Atomically rename temporary file to target file
 	if err := os.Rename(tempFile, s.filePath); err != nil {
-		os.Remove(tempFile) // Clean up temp file if rename fails
+		os.Remove(tempFile)
 		return err
 	}
 
@@ -126,7 +131,6 @@ func (s *FileBackedStorage) Shutdown() error {
 	return s.SaveToFile()
 }
 
-// Override base methods to implement synchronous saving when storeInterval is 0
 func (s *FileBackedStorage) UpdateGauge(name string, value Gauge) {
 	s.MemStorage.UpdateGauge(name, value)
 	if s.storeInterval == 0 {
