@@ -14,6 +14,7 @@ type Storage interface {
 	GetCounter(name string) (Counter, bool)
 	GetAllGauges() map[string]Gauge
 	GetAllCounters() map[string]Counter
+	Shutdown() error // Added Shutdown method to interface
 }
 
 type Numeric interface {
@@ -92,4 +93,8 @@ func (m *MemStorage) GetAllGauges() map[string]Gauge {
 
 func (m *MemStorage) GetAllCounters() map[string]Counter {
 	return m.counters.GetAll()
+}
+
+func (m *MemStorage) Shutdown() error {
+	return nil
 }
