@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
@@ -18,7 +19,6 @@ type Storage interface {
 	GetAllCounters() map[string]Counter
 	Shutdown() error
 
-	// Новый метод батчевого обновления
 	UpdateMetricsBatch(batch []middleware.MetricsJSON) error
 }
 
@@ -106,12 +106,14 @@ func (m *MemStorage) Shutdown() error {
 
 func (m *MemStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) error {
 	for _, metric := range batch {
-		switch metricType := metric.MType; metricType {
-		case middleware.CounterMetric, "counter", "Counter", "COUNTER":
+		mType := strings.ToLower(string(metric.MType))
+
+		switch mType {
+		case "counter":
 			if metric.Delta != nil {
 				m.UpdateCounter(metric.ID, Counter(*metric.Delta))
 			}
-		case middleware.GaugeMetric, "gauge", "Gauge", "GAUGE":
+		case "gauge":
 			if metric.Value != nil {
 				m.UpdateGauge(metric.ID, Gauge(*metric.Value))
 			}
