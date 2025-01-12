@@ -33,6 +33,7 @@ func formatGauge(value float64) string {
 
 	s = strings.TrimRight(s, "0")
 	s = strings.TrimRight(s, ".")
+
 	return s
 }
 
@@ -67,19 +68,18 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 	mt := strings.ToLower(metricType)
 	switch mt {
 	case GaugeMetric:
-		value, ok := ms.Storage.GetGauge(metricName)
+		g, ok := ms.Storage.GetGauge(metricName)
 		if !ok {
 			return "", errors.New("metric not found")
 		}
-		return formatGauge(float64(value)), nil
+		return formatGauge(float64(g)), nil
 
 	case CounterMetric:
-		value, ok := ms.Storage.GetCounter(metricName)
+		c, ok := ms.Storage.GetCounter(metricName)
 		if !ok {
 			return "", errors.New("metric not found")
 		}
-		// Counter выводим как int
-		return strconv.FormatInt(int64(value), 10), nil
+		return strconv.FormatInt(int64(c), 10), nil
 
 	default:
 		return "", errors.New("unsupported metric type")
@@ -88,7 +88,6 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 
 func (ms *MetricsService) GetAllMetrics() map[string]string {
 	result := make(map[string]string)
-
 	for name, g := range ms.Storage.GetAllGauges() {
 		result[name] = formatGauge(float64(g))
 	}
@@ -129,7 +128,6 @@ func (ms *MetricsService) UpdateMetricsBatch(batch []middleware.MetricsJSON) ([]
 				MType: m.MType,
 				Value: &fv,
 			})
-		default:
 		}
 	}
 	return result, nil
