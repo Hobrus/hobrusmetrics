@@ -78,7 +78,7 @@ func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) er
 		switch m.MType {
 		case "counter":
 			values = append(values, fmt.Sprintf(
-				"('%s','counter',metrics.ivalue + %d, 0)",
+				"('%s','counter',%d,0)",
 				m.ID, *m.Delta,
 			))
 		case "gauge":
@@ -86,26 +86,29 @@ func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) er
 				"('%s','gauge',0,%f)",
 				m.ID, *m.Value,
 			))
+		default:
 		}
 	}
+
 	if len(values) == 0 {
 		return nil
 	}
 
 	insertQuery := `
-    INSERT INTO metrics (id, mtype, ivalue, fvalue)
-    VALUES %s
-    ON CONFLICT (id) DO UPDATE
-      SET mtype = EXCLUDED.mtype,
-          ivalue = CASE WHEN EXCLUDED.mtype='counter'
-                        THEN metrics.ivalue + EXCLUDED.ivalue
-                        ELSE metrics.ivalue
-                   END,
-          fvalue = CASE WHEN EXCLUDED.mtype='gauge'
-                        THEN EXCLUDED.fvalue
-                        ELSE metrics.fvalue
-                   END;
-    `
+	INSERT INTO metrics (id, mtype, ivalue, fvalue)
+	VALUES %s
+	ON CONFLICT (id) DO UPDATE
+	  SET mtype = EXCLUDED.mtype,
+	      ivalue = CASE WHEN EXCLUDED.mtype='counter'
+	                    THEN metrics.ivalue + EXCLUDED.ivalue
+	                    ELSE metrics.ivalue
+	               END,
+	      fvalue = CASE WHEN EXCLUDED.mtype='gauge'
+	                    THEN EXCLUDED.fvalue
+	                    ELSE metrics.fvalue
+	               END;
+	`
+
 	insertQuery = fmt.Sprintf(insertQuery, strings.Join(values, ","))
 
 	_, err = tx.Exec(ctx, insertQuery)
