@@ -75,7 +75,9 @@ func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) er
 
 	var values []string
 	for _, m := range batch {
-		switch m.MType {
+		mt := strings.ToLower(string(m.MType))
+
+		switch mt {
 		case "counter":
 			if m.Delta != nil {
 				values = append(values, fmt.Sprintf(
@@ -91,6 +93,7 @@ func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) er
 				))
 			}
 		default:
+			return fmt.Errorf("unsupported metric type in batch: %s", m.MType)
 		}
 	}
 
@@ -116,10 +119,12 @@ func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) er
 
 	_, err = tx.Exec(ctx, insertQuery)
 	if err != nil {
+		fmt.Printf("batch insert error: %v\n", err)
 		return fmt.Errorf("batch insert error: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
+		fmt.Printf("commit error: %v\n", err)
 		return fmt.Errorf("commit error: %w", err)
 	}
 

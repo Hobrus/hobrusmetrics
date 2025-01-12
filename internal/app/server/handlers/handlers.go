@@ -70,10 +70,8 @@ func (h *Handler) getAllMetricsHandler(c *gin.Context) {
 	}
 
 	c.Header("Content-Type", "text/html")
-	err = tmpl.Execute(c.Writer, metrics)
-	if err != nil {
+	if err := tmpl.Execute(c.Writer, metrics); err != nil {
 		c.String(http.StatusInternalServerError, "Error rendering template")
-		return
 	}
 }
 
@@ -85,7 +83,7 @@ func (h *Handler) updateBatchHandler(c *gin.Context) {
 		return
 	}
 	if len(metricsBatch) == 0 {
-		c.Status(http.StatusOK) // пустой список не ошибка, отдадим 200
+		c.Status(http.StatusOK)
 		return
 	}
 

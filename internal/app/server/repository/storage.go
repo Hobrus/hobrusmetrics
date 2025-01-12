@@ -18,6 +18,7 @@ type Storage interface {
 	GetAllCounters() map[string]Counter
 	Shutdown() error
 
+	// Новый метод батчевого обновления
 	UpdateMetricsBatch(batch []middleware.MetricsJSON) error
 }
 
@@ -49,18 +50,18 @@ func (m *MetricStorage[T]) Update(name string, value T, accumulate bool) {
 func (m *MetricStorage[T]) Get(name string) (T, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	value, exists := m.values[name]
-	return value, exists
+	val, ok := m.values[name]
+	return val, ok
 }
 
 func (m *MetricStorage[T]) GetAll() map[string]T {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	valuesCopy := make(map[string]T, len(m.values))
+	cpy := make(map[string]T, len(m.values))
 	for k, v := range m.values {
-		valuesCopy[k] = v
+		cpy[k] = v
 	}
-	return valuesCopy
+	return cpy
 }
 
 type MemStorage struct {
@@ -105,15 +106,16 @@ func (m *MemStorage) Shutdown() error {
 
 func (m *MemStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) error {
 	for _, metric := range batch {
-		switch metric.MType {
-		case "counter":
+		switch metricType := metric.MType; metricType {
+		case middleware.CounterMetric, "counter", "Counter", "COUNTER":
 			if metric.Delta != nil {
 				m.UpdateCounter(metric.ID, Counter(*metric.Delta))
 			}
-		case "gauge":
+		case middleware.GaugeMetric, "gauge", "Gauge", "GAUGE":
 			if metric.Value != nil {
 				m.UpdateGauge(metric.ID, Gauge(*metric.Value))
 			}
+		default:
 		}
 	}
 	return nil

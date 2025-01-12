@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -49,15 +50,16 @@ func JSONUpdateMiddleware(metricsService MetricService) gin.HandlerFunc {
 			return
 		}
 
+		mt := strings.ToLower(string(metric.MType))
 		var value string
-		switch metric.MType {
-		case CounterMetric:
+		switch mt {
+		case string(CounterMetric):
 			if metric.Delta == nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "delta is required for counter"})
 				return
 			}
 			value = strconv.FormatInt(*metric.Delta, 10)
-		case GaugeMetric:
+		case string(GaugeMetric):
 			if metric.Value == nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "value is required for gauge"})
 				return
@@ -68,12 +70,12 @@ func JSONUpdateMiddleware(metricsService MetricService) gin.HandlerFunc {
 			return
 		}
 
-		if err := metricsService.UpdateMetric(string(metric.MType), metric.ID, value); err != nil {
+		if err := metricsService.UpdateMetric(mt, metric.ID, value); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		updatedValue, err := metricsService.GetMetricValue(string(metric.MType), metric.ID)
+		updatedValue, err := metricsService.GetMetricValue(mt, metric.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get updated value"})
 			return
@@ -81,13 +83,13 @@ func JSONUpdateMiddleware(metricsService MetricService) gin.HandlerFunc {
 
 		response := MetricsJSON{
 			ID:    metric.ID,
-			MType: metric.MType,
+			MType: MetricType(mt),
 		}
-		switch metric.MType {
-		case CounterMetric:
+		switch mt {
+		case string(CounterMetric):
 			delta, _ := strconv.ParseInt(updatedValue, 10, 64)
 			response.Delta = &delta
-		case GaugeMetric:
+		case string(GaugeMetric):
 			val, _ := strconv.ParseFloat(updatedValue, 64)
 			response.Value = &val
 		}
@@ -118,7 +120,8 @@ func JSONValueMiddleware(metricsService interface {
 			return
 		}
 
-		value, err := metricsService.GetMetricValue(string(metric.MType), metric.ID)
+		mt := strings.ToLower(string(metric.MType))
+		value, err := metricsService.GetMetricValue(mt, metric.ID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "metric not found"})
 			return
@@ -126,15 +129,15 @@ func JSONValueMiddleware(metricsService interface {
 
 		response := MetricsJSON{
 			ID:    metric.ID,
-			MType: metric.MType,
+			MType: MetricType(mt),
 		}
-		switch metric.MType {
-		case CounterMetric:
+		switch mt {
+		case string(CounterMetric):
 			delta, _ := strconv.ParseInt(value, 10, 64)
 			response.Delta = &delta
-		case GaugeMetric:
-			floatVal, _ := strconv.ParseFloat(value, 64)
-			response.Value = &floatVal
+		case string(GaugeMetric):
+			val, _ := strconv.ParseFloat(value, 64)
+			response.Value = &val
 		}
 
 		c.JSON(http.StatusOK, response)

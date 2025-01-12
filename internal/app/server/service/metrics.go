@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/repository"
@@ -23,7 +24,8 @@ func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue strin
 		return errors.New("metric name is required")
 	}
 
-	switch metricType {
+	mt := strings.ToLower(metricType)
+	switch mt {
 	case GaugeMetric:
 		val, err := strconv.ParseFloat(metricValue, 64)
 		if err != nil {
@@ -45,42 +47,47 @@ func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue strin
 }
 
 func (ms *MetricsService) UpdateMetricsBatch(batch []middleware.MetricsJSON) ([]middleware.MetricsJSON, error) {
-	err := ms.Storage.UpdateMetricsBatch(batch)
-	if err != nil {
+	if err := ms.Storage.UpdateMetricsBatch(batch); err != nil {
 		return nil, err
 	}
 
-	var out []middleware.MetricsJSON
+	var result []middleware.MetricsJSON
 	for _, m := range batch {
-		var res middleware.MetricsJSON
-		res.ID = m.ID
-		res.MType = m.MType
+		mt := strings.ToLower(string(m.MType))
 
-		switch m.MType {
+		switch mt {
 		case CounterMetric:
-			v, ok := ms.Storage.GetCounter(m.ID)
+			val, ok := ms.Storage.GetCounter(m.ID)
 			if !ok {
 				continue
 			}
-			delta := int64(v)
-			res.Delta = &delta
+			delta := int64(val)
+			result = append(result, middleware.MetricsJSON{
+				ID:    m.ID,
+				MType: m.MType,
+				Delta: &delta,
+			})
 		case GaugeMetric:
-			v, ok := ms.Storage.GetGauge(m.ID)
+			val, ok := ms.Storage.GetGauge(m.ID)
 			if !ok {
 				continue
 			}
-			value := float64(v)
-			res.Value = &value
+			fv := float64(val)
+			result = append(result, middleware.MetricsJSON{
+				ID:    m.ID,
+				MType: m.MType,
+				Value: &fv,
+			})
+		default:
 		}
-
-		out = append(out, res)
 	}
-
-	return out, nil
+	return result, nil
 }
 
 func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string, error) {
-	switch metricType {
+	mt := strings.ToLower(metricType)
+
+	switch mt {
 	case GaugeMetric:
 		value, ok := ms.Storage.GetGauge(metricName)
 		if !ok {
@@ -101,13 +108,12 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 }
 
 func (ms *MetricsService) GetAllMetrics() map[string]string {
-	metrics := make(map[string]string)
-
+	result := make(map[string]string)
 	for name, g := range ms.Storage.GetAllGauges() {
-		metrics[name] = strconv.FormatFloat(float64(g), 'f', -1, 64)
+		result[name] = strconv.FormatFloat(float64(g), 'f', -1, 64)
 	}
 	for name, c := range ms.Storage.GetAllCounters() {
-		metrics[name] = fmt.Sprintf("%d", c)
+		result[name] = fmt.Sprintf("%d", c)
 	}
-	return metrics
+	return result
 }
