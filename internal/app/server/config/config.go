@@ -12,6 +12,8 @@ type Config struct {
 	StoreInterval   time.Duration
 	FileStoragePath string
 	Restore         bool
+
+	DatabaseDSN string
 }
 
 func NewConfig() *Config {
@@ -20,6 +22,7 @@ func NewConfig() *Config {
 		StoreInterval:   300 * time.Second,
 		FileStoragePath: "/tmp/metrics-db.json",
 		Restore:         true,
+		DatabaseDSN:     "", // по умолчанию пустая строка
 	}
 
 	// Parse flags
@@ -27,6 +30,7 @@ func NewConfig() *Config {
 	storeInterval := flag.Int("i", int(cfg.StoreInterval.Seconds()), "Store interval in seconds")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "File storage path")
 	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "Restore metrics from file")
+	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "Database DSN for PostgreSQL connection")
 	flag.Parse()
 
 	// Override with environment variables if present
@@ -48,6 +52,10 @@ func NewConfig() *Config {
 
 	if envRestore := os.Getenv("RESTORE"); envRestore != "" {
 		cfg.Restore, _ = strconv.ParseBool(envRestore)
+	}
+
+	if envDatabaseDSN := os.Getenv("DATABASE_DSN"); envDatabaseDSN != "" {
+		cfg.DatabaseDSN = envDatabaseDSN
 	}
 
 	return cfg
