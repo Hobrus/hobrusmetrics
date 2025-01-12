@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -19,8 +20,17 @@ type MetricsService struct {
 	Storage repository.Storage
 }
 
+func roundFloat(val float64) float64 {
+	const digits = 15
+	shift := math.Pow10(digits)
+	return math.Round(val*shift) / shift
+}
+
 func formatGauge(value float64) string {
+	value = roundFloat(value)
+
 	s := fmt.Sprintf("%.15f", value)
+
 	s = strings.TrimRight(s, "0")
 	s = strings.TrimRight(s, ".")
 	return s
@@ -30,8 +40,8 @@ func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue strin
 	if metricName == "" {
 		return errors.New("metric name is required")
 	}
-	mt := strings.ToLower(metricType)
 
+	mt := strings.ToLower(metricType)
 	switch mt {
 	case GaugeMetric:
 		val, err := strconv.ParseFloat(metricValue, 64)
@@ -61,7 +71,6 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 		if !ok {
 			return "", errors.New("metric not found")
 		}
-		// Возвращаем строку без лишних нулей:
 		return formatGauge(float64(value)), nil
 
 	case CounterMetric:
@@ -69,6 +78,7 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 		if !ok {
 			return "", errors.New("metric not found")
 		}
+		// Counter выводим как int
 		return strconv.FormatInt(int64(value), 10), nil
 
 	default:
@@ -78,11 +88,12 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 
 func (ms *MetricsService) GetAllMetrics() map[string]string {
 	result := make(map[string]string)
+
 	for name, g := range ms.Storage.GetAllGauges() {
 		result[name] = formatGauge(float64(g))
 	}
 	for name, c := range ms.Storage.GetAllCounters() {
-		result[name] = fmt.Sprintf("%d", c)
+		result[name] = strconv.FormatInt(int64(c), 10)
 	}
 	return result
 }
@@ -91,6 +102,7 @@ func (ms *MetricsService) UpdateMetricsBatch(batch []middleware.MetricsJSON) ([]
 	if err := ms.Storage.UpdateMetricsBatch(batch); err != nil {
 		return nil, err
 	}
+
 	var result []middleware.MetricsJSON
 	for _, m := range batch {
 		mt := strings.ToLower(string(m.MType))
@@ -117,6 +129,7 @@ func (ms *MetricsService) UpdateMetricsBatch(batch []middleware.MetricsJSON) ([]
 				MType: m.MType,
 				Value: &fv,
 			})
+		default:
 		}
 	}
 	return result, nil
