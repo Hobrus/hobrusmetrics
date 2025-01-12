@@ -28,15 +28,14 @@ func main() {
 
 	dbConn, err := repository.NewDBConnection(cfg.DatabaseDSN)
 	if err != nil {
-		logger.Fatalf("Failed to connect to database: %v", err)
+		logger.Warnf("Failed to connect to database, fallback to file or memory: %v", err)
+		dbConn = nil
 	}
-	defer func() {
-		if dbConn != nil {
-			dbConn.Close()
-		}
-	}()
 
-	// Выбираем хранилище
+	// Выбираем хранилище:
+	// 1) PostgreSQL, если dbConn != nil
+	// 2) FileBackedStorage, если указан файл
+	// 3) In-memory, если ни БД, ни файл не заданы
 	var storage repository.Storage
 
 	switch {
@@ -44,26 +43,33 @@ func main() {
 		logger.Infof("Using PostgreSQL storage at DSN=%s", cfg.DatabaseDSN)
 		pStorage, err := repository.NewPostgresStorage(dbConn)
 		if err != nil {
-			logger.Fatalf("Failed to create PostgresStorage: %v", err)
+			logger.Warnf("Failed to create PostgresStorage, fallback to file or memory: %v", err)
+			dbConn.Close()
+			dbConn = nil
+		} else {
+			storage = pStorage
 		}
-		storage = pStorage
+	}
 
-	case cfg.FileStoragePath != "":
-		logger.Infof("Using file-backed storage at file=%s", cfg.FileStoragePath)
-		fStorage, err := repository.NewFileBackedStorage(
-			cfg.FileStoragePath,
-			cfg.StoreInterval,
-			cfg.Restore,
-			logger,
-		)
-		if err != nil {
-			logger.Fatalf("Failed to initialize file storage: %v", err)
+	if storage == nil {
+		if cfg.FileStoragePath != "" {
+			logger.Infof("Using file-backed storage at file=%s", cfg.FileStoragePath)
+			fStorage, err := repository.NewFileBackedStorage(
+				cfg.FileStoragePath,
+				cfg.StoreInterval,
+				cfg.Restore,
+				logger,
+			)
+			if err != nil {
+				logger.Warnf("Failed to initialize file storage, fallback to memory: %v", err)
+				storage = repository.NewMemStorage()
+			} else {
+				storage = fStorage
+			}
+		} else {
+			logger.Info("Using in-memory storage")
+			storage = repository.NewMemStorage()
 		}
-		storage = fStorage
-
-	default:
-		logger.Info("Using in-memory storage")
-		storage = repository.NewMemStorage()
 	}
 
 	metricsService := &service.MetricsService{Storage: storage}
@@ -75,6 +81,24 @@ func main() {
 	router.Use(middleware.LoggingMiddleware(logger))
 
 	handler.SetupRoutes(router)
+
+	router.GET("/ping", func(c *gin.Context) {
+		// Если dbConn == nil => считаем, что БД не настроена
+		if dbConn == nil {
+			c.String(http.StatusInternalServerError, "database not configured")
+			return
+		}
+
+		// Иначе делаем ping с таймаутом
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+
+		if err := dbConn.Ping(ctx); err != nil {
+			c.String(http.StatusInternalServerError, "database ping error: %v", err)
+			return
+		}
+		c.String(http.StatusOK, "OK")
+	})
 
 	srv := &http.Server{
 		Addr:    cfg.ServerAddress,
@@ -97,6 +121,10 @@ func main() {
 
 		if err := storage.Shutdown(); err != nil {
 			logger.Errorf("Failed to save metrics during shutdown: %v", err)
+		}
+
+		if dbConn != nil {
+			dbConn.Close()
 		}
 	}()
 
