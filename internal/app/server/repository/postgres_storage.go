@@ -3,9 +3,12 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
 )
 
 type PostgresStorage struct {
@@ -32,7 +35,7 @@ func (ps *PostgresStorage) UpdateGauge(name string, value Gauge) {
         VALUES ($1, 'gauge', $2)
         ON CONFLICT (id) DO UPDATE
           SET mtype = 'gauge',
-              fvalue = EXCLUDED.fvalue;  -- gauge перезаписываем
+              fvalue = EXCLUDED.fvalue; -- gauge перезаписываем
     `
 	_, err := ps.db.Pool.Exec(context.Background(), query, name, float64(value))
 	if err != nil {
@@ -49,12 +52,72 @@ func (ps *PostgresStorage) UpdateCounter(name string, value Counter) {
         VALUES ($1, 'counter', $2)
         ON CONFLICT (id) DO UPDATE
           SET mtype = 'counter',
-              ivalue = metrics.ivalue + EXCLUDED.ivalue;  -- counter накапливаем
+              ivalue = metrics.ivalue + EXCLUDED.ivalue; -- counter накапливаем
     `
 	_, err := ps.db.Pool.Exec(context.Background(), query, name, int64(value))
 	if err != nil {
 		fmt.Printf("UpdateCounter error: %v\n", err)
 	}
+}
+
+func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) error {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	ctx := context.Background()
+	tx, err := ps.db.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin tx: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	var values []string
+	for _, m := range batch {
+		switch m.MType {
+		case "counter":
+			values = append(values, fmt.Sprintf(
+				"('%s','counter',metrics.ivalue + %d, 0)",
+				m.ID, *m.Delta,
+			))
+		case "gauge":
+			values = append(values, fmt.Sprintf(
+				"('%s','gauge',0,%f)",
+				m.ID, *m.Value,
+			))
+		}
+	}
+	if len(values) == 0 {
+		return nil
+	}
+
+	insertQuery := `
+    INSERT INTO metrics (id, mtype, ivalue, fvalue)
+    VALUES %s
+    ON CONFLICT (id) DO UPDATE
+      SET mtype = EXCLUDED.mtype,
+          ivalue = CASE WHEN EXCLUDED.mtype='counter'
+                        THEN metrics.ivalue + EXCLUDED.ivalue
+                        ELSE metrics.ivalue
+                   END,
+          fvalue = CASE WHEN EXCLUDED.mtype='gauge'
+                        THEN EXCLUDED.fvalue
+                        ELSE metrics.fvalue
+                   END;
+    `
+	insertQuery = fmt.Sprintf(insertQuery, strings.Join(values, ","))
+
+	_, err = tx.Exec(ctx, insertQuery)
+	if err != nil {
+		return fmt.Errorf("batch insert error: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit error: %w", err)
+	}
+
+	return nil
 }
 
 func (ps *PostgresStorage) GetGauge(name string) (Gauge, bool) {

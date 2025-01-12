@@ -2,6 +2,8 @@ package repository
 
 import (
 	"sync"
+
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
 )
 
 type Gauge float64
@@ -14,7 +16,9 @@ type Storage interface {
 	GetCounter(name string) (Counter, bool)
 	GetAllGauges() map[string]Gauge
 	GetAllCounters() map[string]Counter
-	Shutdown() error // Added Shutdown method to interface
+	Shutdown() error
+
+	UpdateMetricsBatch(batch []middleware.MetricsJSON) error
 }
 
 type Numeric interface {
@@ -96,5 +100,21 @@ func (m *MemStorage) GetAllCounters() map[string]Counter {
 }
 
 func (m *MemStorage) Shutdown() error {
+	return nil
+}
+
+func (m *MemStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) error {
+	for _, metric := range batch {
+		switch metric.MType {
+		case "counter":
+			if metric.Delta != nil {
+				m.UpdateCounter(metric.ID, Counter(*metric.Delta))
+			}
+		case "gauge":
+			if metric.Value != nil {
+				m.UpdateGauge(metric.ID, Gauge(*metric.Value))
+			}
+		}
+	}
 	return nil
 }

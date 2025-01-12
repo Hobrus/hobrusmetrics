@@ -5,10 +5,10 @@ import (
 	"html/template"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
-
-	"github.com/gin-gonic/gin"
 )
 
 //go:embed template/*.html
@@ -23,14 +23,14 @@ func NewHandler(ms *service.MetricsService) *Handler {
 }
 
 func (h *Handler) SetupRoutes(router *gin.Engine) {
-	// Legacy routes for backward compatibility
 	router.POST("/update/:type/:name/:value", h.updateHandler)
 	router.GET("/value/:type/:name", h.getValueHandler)
 	router.GET("/", h.getAllMetricsHandler)
 
-	// New JSON API routes using middleware
 	router.POST("/update/", middleware.JSONUpdateMiddleware(h.ms))
 	router.POST("/value/", middleware.JSONValueMiddleware(h.ms))
+
+	router.POST("/updates/", h.updateBatchHandler)
 }
 
 func (h *Handler) updateHandler(c *gin.Context) {
@@ -63,7 +63,7 @@ func (h *Handler) getValueHandler(c *gin.Context) {
 func (h *Handler) getAllMetricsHandler(c *gin.Context) {
 	metrics := h.ms.GetAllMetrics()
 
-	// Parse the embedded template
+	// Рендерим простую HTML-страницу со списком метрик
 	tmpl, err := template.ParseFS(templatesFS, "template/metrics.html")
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Error rendering template")
@@ -76,4 +76,28 @@ func (h *Handler) getAllMetricsHandler(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Error rendering template")
 		return
 	}
+}
+
+func (h *Handler) updateBatchHandler(c *gin.Context) {
+	// Читаем массив метрик из JSON (структура такая же, как и для single-метрики)
+	var metricsBatch []middleware.MetricsJSON
+	if err := c.ShouldBindJSON(&metricsBatch); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON format"})
+		return
+	}
+	if len(metricsBatch) == 0 {
+		// Пустые батчи не обрабатываем — не ошибка, но и смысла нет
+		c.Status(http.StatusOK)
+		return
+	}
+
+	// Обновляем сразу все метрики
+	updated, err := h.ms.UpdateMetricsBatch(metricsBatch)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Возвращаем в ответе обновлённые значения (по аналогии с JSONUpdateMiddleware)
+	c.JSON(http.StatusOK, updated)
 }

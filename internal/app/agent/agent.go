@@ -1,4 +1,3 @@
-// internal/app/agent/agent.go
 package agent
 
 import (
@@ -40,7 +39,7 @@ func (a *Agent) Run() {
 			a.Metrics.Collect(&a.PollCount)
 		case <-reportTicker.C:
 			metricsData := a.Metrics.GetAll()
-			a.Sender.Send(metricsData)
+			a.Sender.SendBatch(metricsData)
 		}
 	}
 }
