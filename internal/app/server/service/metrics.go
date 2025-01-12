@@ -19,12 +19,19 @@ type MetricsService struct {
 	Storage repository.Storage
 }
 
+func formatGauge(value float64) string {
+	s := fmt.Sprintf("%.15f", value)
+	s = strings.TrimRight(s, "0")
+	s = strings.TrimRight(s, ".")
+	return s
+}
+
 func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue string) error {
 	if metricName == "" {
 		return errors.New("metric name is required")
 	}
-
 	mt := strings.ToLower(metricType)
+
 	switch mt {
 	case GaugeMetric:
 		val, err := strconv.ParseFloat(metricValue, 64)
@@ -46,15 +53,47 @@ func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue strin
 	return nil
 }
 
+func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string, error) {
+	mt := strings.ToLower(metricType)
+	switch mt {
+	case GaugeMetric:
+		value, ok := ms.Storage.GetGauge(metricName)
+		if !ok {
+			return "", errors.New("metric not found")
+		}
+		// Возвращаем строку без лишних нулей:
+		return formatGauge(float64(value)), nil
+
+	case CounterMetric:
+		value, ok := ms.Storage.GetCounter(metricName)
+		if !ok {
+			return "", errors.New("metric not found")
+		}
+		return strconv.FormatInt(int64(value), 10), nil
+
+	default:
+		return "", errors.New("unsupported metric type")
+	}
+}
+
+func (ms *MetricsService) GetAllMetrics() map[string]string {
+	result := make(map[string]string)
+	for name, g := range ms.Storage.GetAllGauges() {
+		result[name] = formatGauge(float64(g))
+	}
+	for name, c := range ms.Storage.GetAllCounters() {
+		result[name] = fmt.Sprintf("%d", c)
+	}
+	return result
+}
+
 func (ms *MetricsService) UpdateMetricsBatch(batch []middleware.MetricsJSON) ([]middleware.MetricsJSON, error) {
 	if err := ms.Storage.UpdateMetricsBatch(batch); err != nil {
 		return nil, err
 	}
-
 	var result []middleware.MetricsJSON
 	for _, m := range batch {
 		mt := strings.ToLower(string(m.MType))
-
 		switch mt {
 		case CounterMetric:
 			val, ok := ms.Storage.GetCounter(m.ID)
@@ -78,43 +117,7 @@ func (ms *MetricsService) UpdateMetricsBatch(batch []middleware.MetricsJSON) ([]
 				MType: m.MType,
 				Value: &fv,
 			})
-		default:
 		}
 	}
 	return result, nil
-}
-
-func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string, error) {
-	mt := strings.ToLower(metricType)
-
-	switch mt {
-	case GaugeMetric:
-		value, ok := ms.Storage.GetGauge(metricName)
-		if !ok {
-			return "", errors.New("metric not found")
-		}
-		// Вместо 'g', -1, 64 используем 'f', 10, 64 (10 знаков после запятой).
-		return strconv.FormatFloat(float64(value), 'f', 10, 64), nil
-
-	case CounterMetric:
-		value, ok := ms.Storage.GetCounter(metricName)
-		if !ok {
-			return "", errors.New("metric not found")
-		}
-		return strconv.FormatInt(int64(value), 10), nil
-
-	default:
-		return "", errors.New("unsupported metric type")
-	}
-}
-
-func (ms *MetricsService) GetAllMetrics() map[string]string {
-	result := make(map[string]string)
-	for name, g := range ms.Storage.GetAllGauges() {
-		result[name] = strconv.FormatFloat(float64(g), 'f', 10, 64)
-	}
-	for name, c := range ms.Storage.GetAllCounters() {
-		result[name] = fmt.Sprintf("%d", c)
-	}
-	return result
 }

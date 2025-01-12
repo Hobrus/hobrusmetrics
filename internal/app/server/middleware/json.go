@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -25,21 +26,31 @@ type MetricsJSON struct {
 	Value *float64   `json:"value,omitempty"`
 }
 
+func formatGauge(value float64) string {
+	s := fmt.Sprintf("%.15f", value)
+	s = strings.TrimRight(s, "0")
+	s = strings.TrimRight(s, ".")
+	return s
+}
+
 func (m MetricsJSON) MarshalJSON() ([]byte, error) {
+	// Если это gauge, то хотим вывести поле "value" в "красивом" виде
+	if strings.ToLower(string(m.MType)) == string(GaugeMetric) && m.Value != nil {
+		valStr := formatGauge(*m.Value)
+		// Сформируем JSON руками
+		return []byte(fmt.Sprintf(`{"id":"%s","type":"%s","value":%s}`,
+			m.ID, m.MType, valStr,
+		)), nil
+	}
+
+	if strings.ToLower(string(m.MType)) == string(CounterMetric) && m.Delta != nil {
+		return []byte(fmt.Sprintf(`{"id":"%s","type":"%s","delta":%d}`,
+			m.ID, m.MType, *m.Delta,
+		)), nil
+	}
+
 	type alias MetricsJSON
-	a := alias(m)
-
-	if a.MType == GaugeMetric && a.Value != nil {
-		valStr := strconv.FormatFloat(*a.Value, 'f', 10, 64)
-		return []byte(`{"id":"` + a.ID + `","type":"` + string(a.MType) + `","value":` + valStr + `}`), nil
-	}
-
-	if a.MType == CounterMetric && a.Delta != nil {
-		deltaStr := strconv.FormatInt(*a.Delta, 10)
-		return []byte(`{"id":"` + a.ID + `","type":"` + string(a.MType) + `","delta":` + deltaStr + `}`), nil
-	}
-
-	return json.Marshal(a)
+	return json.Marshal(alias(m))
 }
 
 func JSONUpdateMiddleware(metricsService interface {
@@ -60,33 +71,36 @@ func JSONUpdateMiddleware(metricsService interface {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON format"})
 			return
 		}
+
 		if metric.ID == "" || metric.MType == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "id and type are required"})
 			return
 		}
 
 		mt := strings.ToLower(string(metric.MType))
-		var value string
 		switch mt {
 		case string(CounterMetric):
 			if metric.Delta == nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "delta is required for counter"})
 				return
 			}
-			value = strconv.FormatInt(*metric.Delta, 10)
+			if err := metricsService.UpdateMetric(mt, metric.ID, strconv.FormatInt(*metric.Delta, 10)); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+
 		case string(GaugeMetric):
 			if metric.Value == nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "value is required for gauge"})
 				return
 			}
-			value = strconv.FormatFloat(*metric.Value, 'f', 10, 64) // можно 'f', 10, 64
+			if err := metricsService.UpdateMetric(mt, metric.ID, formatGauge(*metric.Value)); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid metric type"})
-			return
-		}
-
-		if err := metricsService.UpdateMetric(mt, metric.ID, value); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
@@ -100,13 +114,12 @@ func JSONUpdateMiddleware(metricsService interface {
 			ID:    metric.ID,
 			MType: metric.MType,
 		}
-		switch mt {
-		case string(CounterMetric):
-			delta, _ := strconv.ParseInt(updatedValue, 10, 64)
-			response.Delta = &delta
-		case string(GaugeMetric):
-			fv, _ := strconv.ParseFloat(updatedValue, 64)
-			response.Value = &fv
+		if mt == string(CounterMetric) {
+			d, _ := strconv.ParseInt(updatedValue, 10, 64)
+			response.Delta = &d
+		} else {
+			f, _ := strconv.ParseFloat(updatedValue, 64)
+			response.Value = &f
 		}
 
 		c.JSON(http.StatusOK, response)
@@ -136,7 +149,7 @@ func JSONValueMiddleware(metricsService interface {
 		}
 
 		mt := strings.ToLower(string(metric.MType))
-		value, err := metricsService.GetMetricValue(mt, metric.ID)
+		val, err := metricsService.GetMetricValue(mt, metric.ID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "metric not found"})
 			return
@@ -146,13 +159,12 @@ func JSONValueMiddleware(metricsService interface {
 			ID:    metric.ID,
 			MType: metric.MType,
 		}
-		switch mt {
-		case string(CounterMetric):
-			delta, _ := strconv.ParseInt(value, 10, 64)
-			response.Delta = &delta
-		case string(GaugeMetric):
-			fv, _ := strconv.ParseFloat(value, 64)
-			response.Value = &fv
+		if mt == string(CounterMetric) {
+			d, _ := strconv.ParseInt(val, 10, 64)
+			response.Delta = &d
+		} else {
+			f, _ := strconv.ParseFloat(val, 64)
+			response.Value = &f
 		}
 
 		c.JSON(http.StatusOK, response)
