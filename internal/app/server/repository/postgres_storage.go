@@ -73,32 +73,58 @@ func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) er
 		_ = tx.Rollback(ctx)
 	}()
 
-	var values []string
-	for _, m := range batch {
-		mt := strings.ToLower(string(m.MType))
+	type dedupKey struct {
+		ID    string
+		MType string
+	}
+	type accumVal struct {
+		iValue int64
+		fValue float64
+	}
 
-		switch mt {
+	deduped := make(map[dedupKey]accumVal)
+
+	for _, m := range batch {
+		key := dedupKey{
+			ID:    m.ID,
+			MType: strings.ToLower(string(m.MType)),
+		}
+		val, ok := deduped[key]
+		if !ok {
+			val = accumVal{}
+		}
+		switch key.MType {
 		case "counter":
 			if m.Delta != nil {
-				values = append(values, fmt.Sprintf(
-					"('%s','counter',%d,0)",
-					m.ID, *m.Delta,
-				))
+				val.iValue += *m.Delta
 			}
 		case "gauge":
 			if m.Value != nil {
-				values = append(values, fmt.Sprintf(
-					"('%s','gauge',0,%f)",
-					m.ID, *m.Value,
-				))
+				val.fValue = *m.Value
 			}
 		default:
-			return fmt.Errorf("unsupported metric type in batch: %s", m.MType)
+			return fmt.Errorf("unsupported metric type in batch: %q", m.MType)
 		}
+		deduped[key] = val
 	}
 
-	if len(values) == 0 {
+	if len(deduped) == 0 {
 		return nil
+	}
+
+	var values []string
+	for key, val := range deduped {
+		if key.MType == "counter" {
+			values = append(values, fmt.Sprintf(
+				"('%s','counter',%d,0)",
+				key.ID, val.iValue,
+			))
+		} else {
+			values = append(values, fmt.Sprintf(
+				"('%s','gauge',0,%f)",
+				key.ID, val.fValue,
+			))
+		}
 	}
 
 	insertQuery := `
