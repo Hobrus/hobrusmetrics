@@ -30,10 +30,40 @@ func main() {
 	if err != nil {
 		logger.Fatalf("Failed to connect to database: %v", err)
 	}
+	defer func() {
+		if dbConn != nil {
+			dbConn.Close()
+		}
+	}()
 
-	storage, err := repository.NewFileBackedStorage(cfg.FileStoragePath, cfg.StoreInterval, cfg.Restore, logger)
-	if err != nil {
-		logger.Fatalf("Failed to initialize storage: %v", err)
+	// Выбираем хранилище
+	var storage repository.Storage
+
+	switch {
+	case dbConn != nil:
+		logger.Infof("Using PostgreSQL storage at DSN=%s", cfg.DatabaseDSN)
+		pStorage, err := repository.NewPostgresStorage(dbConn)
+		if err != nil {
+			logger.Fatalf("Failed to create PostgresStorage: %v", err)
+		}
+		storage = pStorage
+
+	case cfg.FileStoragePath != "":
+		logger.Infof("Using file-backed storage at file=%s", cfg.FileStoragePath)
+		fStorage, err := repository.NewFileBackedStorage(
+			cfg.FileStoragePath,
+			cfg.StoreInterval,
+			cfg.Restore,
+			logger,
+		)
+		if err != nil {
+			logger.Fatalf("Failed to initialize file storage: %v", err)
+		}
+		storage = fStorage
+
+	default:
+		logger.Info("Using in-memory storage")
+		storage = repository.NewMemStorage()
 	}
 
 	metricsService := &service.MetricsService{Storage: storage}
@@ -46,22 +76,6 @@ func main() {
 
 	handler.SetupRoutes(router)
 
-	router.GET("/ping", func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
-		defer cancel()
-
-		if dbConn == nil {
-			c.String(http.StatusInternalServerError, "database not configured")
-			return
-		}
-		if err := dbConn.Ping(ctx); err != nil {
-			c.String(http.StatusInternalServerError, "database ping error: %v", err)
-			return
-		}
-		c.String(http.StatusOK, "OK")
-	})
-
-	// Setup graceful shutdown
 	srv := &http.Server{
 		Addr:    cfg.ServerAddress,
 		Handler: router,
@@ -79,10 +93,6 @@ func main() {
 
 		if err := srv.Shutdown(ctx); err != nil {
 			logger.Errorf("Server shutdown error: %v", err)
-		}
-
-		if dbConn != nil {
-			dbConn.Close()
 		}
 
 		if err := storage.Shutdown(); err != nil {

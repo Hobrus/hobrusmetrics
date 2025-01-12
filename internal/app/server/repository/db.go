@@ -39,9 +39,34 @@ func NewDBConnection(dsn string) (*DBConnection, error) {
 	return &DBConnection{Pool: pool}, nil
 }
 
+// CreateMetricsTable создаёт таблицу для хранения метрик, если она не существует.
+// В качестве примера в одной таблице хранятся и counter, и gauge:
+//   - mtype = 'counter' или 'gauge'
+//   - ivalue — для counter
+//   - fvalue — для gauge
+func (db *DBConnection) CreateMetricsTable(ctx context.Context) error {
+	if db == nil || db.Pool == nil {
+		return fmt.Errorf("database not configured")
+	}
+
+	schema := `
+    CREATE TABLE IF NOT EXISTS metrics (
+        id TEXT PRIMARY KEY,
+        mtype TEXT NOT NULL,
+        ivalue BIGINT DEFAULT 0,
+        fvalue DOUBLE PRECISION DEFAULT 0
+    );
+    `
+	_, err := db.Pool.Exec(ctx, schema)
+	if err != nil {
+		return fmt.Errorf("failed to create metrics table: %w", err)
+	}
+
+	return nil
+}
+
 func (db *DBConnection) Ping(ctx context.Context) error {
 	if db == nil || db.Pool == nil {
-		// Если база не инициализирована — возвращаем ошибку.
 		return fmt.Errorf("database not configured")
 	}
 	return db.Pool.Ping(ctx)
