@@ -31,12 +31,12 @@ func (ps *PostgresStorage) UpdateGauge(name string, value Gauge) {
 	defer ps.mu.Unlock()
 
 	query := `
-        INSERT INTO metrics (id, mtype, fvalue)
-        VALUES ($1, 'gauge', $2)
-        ON CONFLICT (id) DO UPDATE
-          SET mtype = 'gauge',
-              fvalue = EXCLUDED.fvalue; -- gauge перезаписываем
-    `
+		INSERT INTO metrics (id, mtype, fvalue)
+		VALUES ($1, 'gauge', $2)
+		ON CONFLICT (id) DO UPDATE
+		  SET mtype = 'gauge',
+		      fvalue = EXCLUDED.fvalue; -- gauge перезаписываем
+	`
 	_, err := ps.db.Pool.Exec(context.Background(), query, name, float64(value))
 	if err != nil {
 		fmt.Printf("UpdateGauge error: %v\n", err)
@@ -48,12 +48,12 @@ func (ps *PostgresStorage) UpdateCounter(name string, value Counter) {
 	defer ps.mu.Unlock()
 
 	query := `
-        INSERT INTO metrics (id, mtype, ivalue)
-        VALUES ($1, 'counter', $2)
-        ON CONFLICT (id) DO UPDATE
-          SET mtype = 'counter',
-              ivalue = metrics.ivalue + EXCLUDED.ivalue; -- counter накапливаем
-    `
+		INSERT INTO metrics (id, mtype, ivalue)
+		VALUES ($1, 'counter', $2)
+		ON CONFLICT (id) DO UPDATE
+		  SET mtype = 'counter',
+		      ivalue = metrics.ivalue + EXCLUDED.ivalue; -- counter накапливаем
+	`
 	_, err := ps.db.Pool.Exec(context.Background(), query, name, int64(value))
 	if err != nil {
 		fmt.Printf("UpdateCounter error: %v\n", err)
@@ -77,15 +77,19 @@ func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) er
 	for _, m := range batch {
 		switch m.MType {
 		case "counter":
-			values = append(values, fmt.Sprintf(
-				"('%s','counter',%d,0)",
-				m.ID, *m.Delta,
-			))
+			if m.Delta != nil {
+				values = append(values, fmt.Sprintf(
+					"('%s','counter',%d,0)",
+					m.ID, *m.Delta,
+				))
+			}
 		case "gauge":
-			values = append(values, fmt.Sprintf(
-				"('%s','gauge',0,%f)",
-				m.ID, *m.Value,
-			))
+			if m.Value != nil {
+				values = append(values, fmt.Sprintf(
+					"('%s','gauge',0,%f)",
+					m.ID, *m.Value,
+				))
+			}
 		default:
 		}
 	}
@@ -95,20 +99,19 @@ func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) er
 	}
 
 	insertQuery := `
-	INSERT INTO metrics (id, mtype, ivalue, fvalue)
-	VALUES %s
-	ON CONFLICT (id) DO UPDATE
-	  SET mtype = EXCLUDED.mtype,
-	      ivalue = CASE WHEN EXCLUDED.mtype='counter'
-	                    THEN metrics.ivalue + EXCLUDED.ivalue
-	                    ELSE metrics.ivalue
-	               END,
-	      fvalue = CASE WHEN EXCLUDED.mtype='gauge'
-	                    THEN EXCLUDED.fvalue
-	                    ELSE metrics.fvalue
-	               END;
+		INSERT INTO metrics (id, mtype, ivalue, fvalue)
+		VALUES %s
+		ON CONFLICT (id) DO UPDATE
+		  SET mtype = EXCLUDED.mtype,
+		      ivalue = CASE WHEN EXCLUDED.mtype='counter'
+		                    THEN metrics.ivalue + EXCLUDED.ivalue
+		                    ELSE metrics.ivalue
+		               END,
+		      fvalue = CASE WHEN EXCLUDED.mtype='gauge'
+		                    THEN EXCLUDED.fvalue
+		                    ELSE metrics.fvalue
+		               END;
 	`
-
 	insertQuery = fmt.Sprintf(insertQuery, strings.Join(values, ","))
 
 	_, err = tx.Exec(ctx, insertQuery)
@@ -170,8 +173,7 @@ func (ps *PostgresStorage) GetAllGauges() map[string]Gauge {
 	defer ps.mu.RUnlock()
 
 	gauges := make(map[string]Gauge)
-	query := `SELECT id, fvalue FROM metrics WHERE mtype = 'gauge';`
-	rows, err := ps.db.Pool.Query(context.Background(), query)
+	rows, err := ps.db.Pool.Query(context.Background(), `SELECT id, fvalue FROM metrics WHERE mtype = 'gauge'`)
 	if err != nil {
 		fmt.Printf("GetAllGauges error: %v\n", err)
 		return gauges
@@ -195,8 +197,7 @@ func (ps *PostgresStorage) GetAllCounters() map[string]Counter {
 	defer ps.mu.RUnlock()
 
 	counters := make(map[string]Counter)
-	query := `SELECT id, ivalue FROM metrics WHERE mtype = 'counter';`
-	rows, err := ps.db.Pool.Query(context.Background(), query)
+	rows, err := ps.db.Pool.Query(context.Background(), `SELECT id, ivalue FROM metrics WHERE mtype = 'counter'`)
 	if err != nil {
 		fmt.Printf("GetAllCounters error: %v\n", err)
 		return counters

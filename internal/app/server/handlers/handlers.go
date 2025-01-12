@@ -63,7 +63,6 @@ func (h *Handler) getValueHandler(c *gin.Context) {
 func (h *Handler) getAllMetricsHandler(c *gin.Context) {
 	metrics := h.ms.GetAllMetrics()
 
-	// Рендерим простую HTML-страницу со списком метрик
 	tmpl, err := template.ParseFS(templatesFS, "template/metrics.html")
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Error rendering template")
@@ -79,25 +78,22 @@ func (h *Handler) getAllMetricsHandler(c *gin.Context) {
 }
 
 func (h *Handler) updateBatchHandler(c *gin.Context) {
-	// Читаем массив метрик из JSON (структура такая же, как и для single-метрики)
 	var metricsBatch []middleware.MetricsJSON
+
 	if err := c.ShouldBindJSON(&metricsBatch); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON format"})
 		return
 	}
 	if len(metricsBatch) == 0 {
-		// Пустые батчи не обрабатываем — не ошибка, но и смысла нет
-		c.Status(http.StatusOK)
+		c.Status(http.StatusOK) // пустой список не ошибка, отдадим 200
 		return
 	}
 
-	// Обновляем сразу все метрики
 	updated, err := h.ms.UpdateMetricsBatch(metricsBatch)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Возвращаем в ответе обновлённые значения (по аналогии с JSONUpdateMiddleware)
 	c.JSON(http.StatusOK, updated)
 }

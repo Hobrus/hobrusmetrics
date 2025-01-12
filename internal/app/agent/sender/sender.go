@@ -31,7 +31,6 @@ func NewSender(serverAddress string) *Sender {
 func compressData(data []byte) (*bytes.Buffer, error) {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
-
 	if _, err := gz.Write(data); err != nil {
 		return nil, fmt.Errorf("failed to write to gzip writer: %w", err)
 	}
@@ -50,19 +49,11 @@ func (s *Sender) Send(metrics map[string]interface{}) {
 		case int64:
 			metricType = "counter"
 			delta := v
-			metric = Metrics{
-				ID:    name,
-				MType: metricType,
-				Delta: &delta,
-			}
+			metric = Metrics{ID: name, MType: metricType, Delta: &delta}
 		case float64:
 			metricType = "gauge"
 			val := v
-			metric = Metrics{
-				ID:    name,
-				MType: metricType,
-				Value: &val,
-			}
+			metric = Metrics{ID: name, MType: metricType, Value: &val}
 		default:
 			log.Printf("Unsupported metric type for %s: %T\n", name, value)
 			continue
@@ -74,18 +65,19 @@ func (s *Sender) Send(metrics map[string]interface{}) {
 			continue
 		}
 
-		compressedData, err := compressData(jsonData)
+		compressed, err := compressData(jsonData)
 		if err != nil {
-			log.Printf("Failed to compress metric data %s: %v\n", name, err)
+			log.Printf("Failed to compress metric %s: %v\n", name, err)
 			continue
 		}
 
 		url := fmt.Sprintf("http://%s/update/", s.ServerAddress)
-		req, err := http.NewRequest(http.MethodPost, url, compressedData)
+		req, err := http.NewRequest(http.MethodPost, url, compressed)
 		if err != nil {
 			log.Printf("Failed to create request: %v\n", err)
 			continue
 		}
+
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Encoding", "gzip")
 		req.Header.Set("Accept-Encoding", "gzip")
@@ -109,24 +101,15 @@ func (s *Sender) SendBatch(metrics map[string]interface{}) {
 		switch v := val.(type) {
 		case int64:
 			delta := v
-			batch = append(batch, Metrics{
-				ID:    name,
-				MType: "counter",
-				Delta: &delta,
-			})
+			batch = append(batch, Metrics{ID: name, MType: "counter", Delta: &delta})
 		case float64:
-			value := v
-			batch = append(batch, Metrics{
-				ID:    name,
-				MType: "gauge",
-				Value: &value,
-			})
+			valCopy := v
+			batch = append(batch, Metrics{ID: name, MType: "gauge", Value: &valCopy})
 		default:
 			log.Printf("Unsupported metric type for %s: %T\n", name, val)
 		}
 	}
 	if len(batch) == 0 {
-		// Пустой батч не шлём
 		return
 	}
 
@@ -136,14 +119,14 @@ func (s *Sender) SendBatch(metrics map[string]interface{}) {
 		return
 	}
 
-	compressedData, err := compressData(data)
+	compressed, err := compressData(data)
 	if err != nil {
 		log.Printf("Failed to compress batch: %v\n", err)
 		return
 	}
 
 	url := fmt.Sprintf("http://%s/updates/", s.ServerAddress)
-	req, err := http.NewRequest(http.MethodPost, url, compressedData)
+	req, err := http.NewRequest(http.MethodPost, url, compressed)
 	if err != nil {
 		log.Printf("Failed to create batch request: %v\n", err)
 		return
@@ -158,5 +141,5 @@ func (s *Sender) SendBatch(metrics map[string]interface{}) {
 		log.Printf("Failed to send batch: %v\n", err)
 		return
 	}
-	defer resp.Body.Close()
+	resp.Body.Close()
 }

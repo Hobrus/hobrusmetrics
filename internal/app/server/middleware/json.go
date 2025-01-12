@@ -18,16 +18,18 @@ const (
 )
 
 type MetricsJSON struct {
-	ID    string     `json:"id"`              // metric name
-	MType MetricType `json:"type"`            // gauge or counter
-	Delta *int64     `json:"delta,omitempty"` // counter value
-	Value *float64   `json:"value,omitempty"` // gauge value
+	ID    string     `json:"id"`
+	MType MetricType `json:"type"`
+	Delta *int64     `json:"delta,omitempty"`
+	Value *float64   `json:"value,omitempty"`
 }
 
-func JSONUpdateMiddleware(metricsService interface {
+type MetricService interface {
 	UpdateMetric(metricType, metricName, metricValue string) error
 	GetMetricValue(metricType, metricName string) (string, error)
-}) gin.HandlerFunc {
+}
+
+func JSONUpdateMiddleware(metricsService MetricService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var metric MetricsJSON
 
@@ -42,7 +44,6 @@ func JSONUpdateMiddleware(metricsService interface {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON format"})
 			return
 		}
-
 		if metric.ID == "" || metric.MType == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "id and type are required"})
 			return
@@ -82,14 +83,13 @@ func JSONUpdateMiddleware(metricsService interface {
 			ID:    metric.ID,
 			MType: metric.MType,
 		}
-
 		switch metric.MType {
 		case CounterMetric:
 			delta, _ := strconv.ParseInt(updatedValue, 10, 64)
 			response.Delta = &delta
 		case GaugeMetric:
-			value, _ := strconv.ParseFloat(updatedValue, 64)
-			response.Value = &value
+			val, _ := strconv.ParseFloat(updatedValue, 64)
+			response.Value = &val
 		}
 
 		c.JSON(http.StatusOK, response)
@@ -113,7 +113,6 @@ func JSONValueMiddleware(metricsService interface {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON format"})
 			return
 		}
-
 		if metric.ID == "" || metric.MType == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "id and type are required"})
 			return
@@ -129,7 +128,6 @@ func JSONValueMiddleware(metricsService interface {
 			ID:    metric.ID,
 			MType: metric.MType,
 		}
-
 		switch metric.MType {
 		case CounterMetric:
 			delta, _ := strconv.ParseInt(value, 10, 64)

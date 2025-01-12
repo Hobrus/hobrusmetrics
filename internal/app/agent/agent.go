@@ -37,9 +37,10 @@ func (a *Agent) Run() {
 		select {
 		case <-pollTicker.C:
 			a.Metrics.Collect(&a.PollCount)
+
 		case <-reportTicker.C:
-			metricsData := a.Metrics.GetAll()
-			a.Sender.SendBatch(metricsData)
+			data := a.Metrics.GetAll()
+			a.Sender.SendBatch(data)
 		}
 	}
 }
