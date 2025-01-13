@@ -67,6 +67,7 @@ func (ms *MetricsService) UpdateMetricsBatch(batch []middleware.MetricsJSON) ([]
 				MType: m.MType,
 				Delta: &delta,
 			})
+
 		case GaugeMetric:
 			val, ok := ms.Storage.GetGauge(m.ID)
 			if !ok {
@@ -93,7 +94,7 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 		if !ok {
 			return "", errors.New("metric not found")
 		}
-		return strconv.FormatFloat(float64(value), 'g', -1, 64), nil
+		return strconv.FormatFloat(float64(value), 'f', 9, 64), nil
 
 	case CounterMetric:
 		value, ok := ms.Storage.GetCounter(metricName)
@@ -109,11 +110,14 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 
 func (ms *MetricsService) GetAllMetrics() map[string]string {
 	result := make(map[string]string)
+
 	for name, g := range ms.Storage.GetAllGauges() {
-		result[name] = strconv.FormatFloat(float64(g), 'f', -1, 64)
+		result[name] = strconv.FormatFloat(float64(g), 'f', 9, 64)
 	}
+
 	for name, c := range ms.Storage.GetAllCounters() {
 		result[name] = fmt.Sprintf("%d", c)
 	}
+
 	return result
 }
