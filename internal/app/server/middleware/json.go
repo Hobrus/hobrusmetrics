@@ -65,7 +65,7 @@ func JSONUpdateMiddleware(metricsService MetricService) gin.HandlerFunc {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "value is required for gauge"})
 				return
 			}
-			value = strconv.FormatFloat(*metric.Value, 'f', 9, 64)
+			value = strconv.FormatFloat(*metric.Value, 'f', -1, 64)
 
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid metric type"})
