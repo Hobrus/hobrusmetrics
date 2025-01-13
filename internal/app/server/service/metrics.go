@@ -21,16 +21,18 @@ type MetricsService struct {
 }
 
 func roundFloat(val float64) float64 {
-	const digits = 15 // ~ макс. точность float64
-	pow := math.Pow10(digits)
-	return math.Round(val*pow) / pow
+	const digits = 15
+	factor := math.Pow10(digits)
+	return math.Round(val*factor) / factor
 }
 
 func formatGauge(value float64) string {
 	value = roundFloat(value)
-	s := fmt.Sprintf("%.15f", value) // "123.450000000000000"
-	s = strings.TrimRight(s, "0")    // "123.45."
-	s = strings.TrimRight(s, ".")    // "123.45"
+
+	s := fmt.Sprintf("%.15f", value)
+
+	s = strings.TrimRight(s, "0")
+	s = strings.TrimRight(s, ".")
 	return s
 }
 
@@ -65,19 +67,18 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 	mt := strings.ToLower(metricType)
 	switch mt {
 	case GaugeMetric:
-		value, ok := ms.Storage.GetGauge(metricName)
+		g, ok := ms.Storage.GetGauge(metricName)
 		if !ok {
 			return "", errors.New("metric not found")
 		}
-		// Убрать "123.450000000000003":
-		return formatGauge(float64(value)), nil
+		return formatGauge(float64(g)), nil
 
 	case CounterMetric:
-		value, ok := ms.Storage.GetCounter(metricName)
+		c, ok := ms.Storage.GetCounter(metricName)
 		if !ok {
 			return "", errors.New("metric not found")
 		}
-		return strconv.FormatInt(int64(value), 10), nil
+		return strconv.FormatInt(int64(c), 10), nil
 
 	default:
 		return "", errors.New("unsupported metric type")
@@ -114,7 +115,6 @@ func (ms *MetricsService) UpdateMetricsBatch(batch []middleware.MetricsJSON) ([]
 				MType: m.MType,
 				Delta: &delta,
 			})
-
 		case GaugeMetric:
 			val, ok := ms.Storage.GetGauge(m.ID)
 			if !ok {
