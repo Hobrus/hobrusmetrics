@@ -25,27 +25,12 @@ type MetricsJSON struct {
 	Value *float64   `json:"value,omitempty"`
 }
 
-func (m MetricsJSON) MarshalJSON() ([]byte, error) {
-	type alias MetricsJSON
-	a := alias(m)
-
-	if a.MType == GaugeMetric && a.Value != nil {
-		valStr := strconv.FormatFloat(*a.Value, 'f', 10, 64)
-		return []byte(`{"id":"` + a.ID + `","type":"` + string(a.MType) + `","value":` + valStr + `}`), nil
-	}
-
-	if a.MType == CounterMetric && a.Delta != nil {
-		deltaStr := strconv.FormatInt(*a.Delta, 10)
-		return []byte(`{"id":"` + a.ID + `","type":"` + string(a.MType) + `","delta":` + deltaStr + `}`), nil
-	}
-
-	return json.Marshal(a)
-}
-
-func JSONUpdateMiddleware(metricsService interface {
+type MetricService interface {
 	UpdateMetric(metricType, metricName, metricValue string) error
 	GetMetricValue(metricType, metricName string) (string, error)
-}) gin.HandlerFunc {
+}
+
+func JSONUpdateMiddleware(metricsService MetricService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var metric MetricsJSON
 
@@ -79,7 +64,7 @@ func JSONUpdateMiddleware(metricsService interface {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "value is required for gauge"})
 				return
 			}
-			value = strconv.FormatFloat(*metric.Value, 'f', 10, 64) // можно 'f', 10, 64
+			value = strconv.FormatFloat(*metric.Value, 'f', -1, 64)
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid metric type"})
 			return
@@ -98,15 +83,15 @@ func JSONUpdateMiddleware(metricsService interface {
 
 		response := MetricsJSON{
 			ID:    metric.ID,
-			MType: metric.MType,
+			MType: MetricType(mt),
 		}
 		switch mt {
 		case string(CounterMetric):
 			delta, _ := strconv.ParseInt(updatedValue, 10, 64)
 			response.Delta = &delta
 		case string(GaugeMetric):
-			fv, _ := strconv.ParseFloat(updatedValue, 64)
-			response.Value = &fv
+			val, _ := strconv.ParseFloat(updatedValue, 64)
+			response.Value = &val
 		}
 
 		c.JSON(http.StatusOK, response)
@@ -144,15 +129,15 @@ func JSONValueMiddleware(metricsService interface {
 
 		response := MetricsJSON{
 			ID:    metric.ID,
-			MType: metric.MType,
+			MType: MetricType(mt),
 		}
 		switch mt {
 		case string(CounterMetric):
 			delta, _ := strconv.ParseInt(value, 10, 64)
 			response.Delta = &delta
 		case string(GaugeMetric):
-			fv, _ := strconv.ParseFloat(value, 64)
-			response.Value = &fv
+			val, _ := strconv.ParseFloat(value, 64)
+			response.Value = &val
 		}
 
 		c.JSON(http.StatusOK, response)
