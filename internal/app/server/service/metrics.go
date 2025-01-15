@@ -96,9 +96,9 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 			return "", errors.New("metric not found")
 		}
 		log.Println("Metrics value: ", value)
-		return_value := strconv.FormatFloat(float64(value), 'G', -1, 64)
-		log.Println("Metrics 2 value: ", return_value)
-		return return_value, nil
+		returnValue := strconv.FormatFloat(float64(value), 'G', -1, 64)
+		log.Println("Metrics 2 value: ", returnValue)
+		return returnValue, nil
 
 	case CounterMetric:
 		value, ok := ms.Storage.GetCounter(metricName)
