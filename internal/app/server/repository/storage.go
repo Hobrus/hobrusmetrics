@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"log"
 	"strings"
 	"sync"
 
@@ -78,6 +79,7 @@ func NewMemStorage() *MemStorage {
 
 func (m *MemStorage) UpdateGauge(name string, value Gauge) {
 	m.gauges.Update(name, value, false)
+	log.Println("Storage: ", m.gauges.values)
 }
 
 func (m *MemStorage) UpdateCounter(name string, value Counter) {

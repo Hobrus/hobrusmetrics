@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -65,7 +66,9 @@ func JSONUpdateMiddleware(metricsService MetricService) gin.HandlerFunc {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "value is required for gauge"})
 				return
 			}
+			log.Println("Json value: ", metric.Value)
 			value = strconv.FormatFloat(*metric.Value, 'G', -1, 64)
+			log.Println("Json 2 value: ", value)
 
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid metric type"})

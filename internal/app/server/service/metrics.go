@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 
@@ -94,7 +95,10 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 		if !ok {
 			return "", errors.New("metric not found")
 		}
-		return strconv.FormatFloat(float64(value), 'G', -1, 64), nil
+		log.Println("Metrics value: ", value)
+		return_value := strconv.FormatFloat(float64(value), 'G', -1, 64)
+		log.Println("Metrics 2 value: ", return_value)
+		return return_value, nil
 
 	case CounterMetric:
 		value, ok := ms.Storage.GetCounter(metricName)
@@ -112,7 +116,9 @@ func (ms *MetricsService) GetAllMetrics() map[string]string {
 	result := make(map[string]string)
 
 	for name, g := range ms.Storage.GetAllGauges() {
+		log.Println("Metrics 3 value: ", g)
 		result[name] = strconv.FormatFloat(float64(g), 'G', -1, 64)
+		log.Println("Metrics 4 value: ", result[name])
 	}
 
 	for name, c := range ms.Storage.GetAllCounters() {
