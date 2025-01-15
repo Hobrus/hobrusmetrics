@@ -94,7 +94,7 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 		if !ok {
 			return "", errors.New("metric not found")
 		}
-		return strconv.FormatFloat(float64(value), 'g', -1, 64), nil
+		return strconv.FormatFloat(float64(value), 'G', -1, 64), nil
 
 	case CounterMetric:
 		value, ok := ms.Storage.GetCounter(metricName)
@@ -112,7 +112,7 @@ func (ms *MetricsService) GetAllMetrics() map[string]string {
 	result := make(map[string]string)
 
 	for name, g := range ms.Storage.GetAllGauges() {
-		result[name] = strconv.FormatFloat(float64(g), 'g', -1, 64)
+		result[name] = strconv.FormatFloat(float64(g), 'G', -1, 64)
 	}
 
 	for name, c := range ms.Storage.GetAllCounters() {
