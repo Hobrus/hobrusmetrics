@@ -2,7 +2,6 @@ package retry
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"os"
 	"strings"
@@ -14,15 +13,22 @@ import (
 // backoffIntervals описывает интервалы ожидания между повторными попытками.
 var backoffIntervals = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
 
-// IsRetriableNetError проверяет, является ли ошибка сетевой временной (можно ли её повторять).
+// IsRetriableNetError проверяет, является ли ошибка сетевой и «временной».
 func IsRetriableNetError(err error) bool {
 	var netErr net.Error
-	if errors.As(err, &netErr) {
-		// net.Error может иметь методы Temporary() или Timeout().
-		// Считаем такую ошибку "временной" и даём шанс на повтор.
-		if netErr.Temporary() || netErr.Timeout() {
-			return true
-		}
+	if !errors.As(err, &netErr) {
+		return false
+	}
+	// 1. Проверяем, не вышло ли время (Timeout)
+	if netErr.Timeout() {
+		return true
+	}
+	// 2. Дополнительно можно проверить текст ошибки на "connection refused", "connection reset" и т.п.
+	lowerMsg := strings.ToLower(err.Error())
+	if strings.Contains(lowerMsg, "connection refused") ||
+		strings.Contains(lowerMsg, "connection reset") ||
+		strings.Contains(lowerMsg, "network is unreachable") {
+		return true
 	}
 	return false
 }
@@ -36,21 +42,17 @@ func IsRetriablePGError(err error) bool {
 		if len(pgErr.Code) >= 2 && pgErr.Code[:2] == "08" {
 			return true
 		}
-		// Можно расширить: например, проверять pgerrcode.UniqueViolation и т.п.
-		// if pgErr.Code == pgerrcode.UniqueViolation {...}
+		// Можно расширить логику под ваши нужды
+		// if pgErr.Code == pgerrcode.UniqueViolation { ... }
 	}
 	return false
 }
 
 // IsRetriableFileError пример проверки, можно ли считать ошибку при работе с файлом временной.
-// Здесь мы лишь демонстрируем идею: проверяем *os.PathError, а внутри неё код ошибки — EAGAIN, EBUSY и пр.
-// В реальном коде можно тщательно уточнить список "временных" ошибок.
 func IsRetriableFileError(err error) bool {
 	var pathErr *os.PathError
 	if errors.As(err, &pathErr) {
-		// Для примера: если текст ошибки содержит "resource busy" или "temporarily unavailable",
-		// считаем её временной.
-		// В реальном проекте можно делать проверки через syscall.Errno.
+		// Например, если в тексте ошибки есть "busy" или "temporarily" — считаем её временной.
 		lowerMsg := strings.ToLower(pathErr.Err.Error())
 		if strings.Contains(lowerMsg, "busy") || strings.Contains(lowerMsg, "temporarily") {
 			return true
@@ -60,8 +62,6 @@ func IsRetriableFileError(err error) bool {
 }
 
 // DoWithRetry делает до 4 попыток вызвать fn().
-// После каждой неудачной попытки, если ошибка "retriable", ждёт время из backoffIntervals.
-// Если ошибка не retriable, или попытки закончились — возвращает последнюю ошибку.
 func DoWithRetry(fn func() error) error {
 	var lastErr error
 	for i := 0; i <= len(backoffIntervals); i++ {
@@ -72,18 +72,19 @@ func DoWithRetry(fn func() error) error {
 		}
 		lastErr = err
 
-		// Проверяем, нужно ли вообще повторять.
+		// Проверяем, нужно ли повторять
 		if !(IsRetriableNetError(err) ||
 			IsRetriablePGError(err) ||
 			IsRetriableFileError(err)) {
-			// Если ошибка не считается "временной" — выходим сразу.
+			// Если ошибка не считается "временной" — сразу выходим
 			return err
 		}
-		// Иначе делаем паузу и повторяем. Если это была последняя итерация, больше не ждём.
+
+		// Иначе делаем паузу и повторяем (если ещё есть попытки)
 		if i < len(backoffIntervals) {
 			time.Sleep(backoffIntervals[i])
 		}
 	}
 
-	return fmt.Errorf("all retries failed: %w", lastErr)
+	return lastErr
 }
