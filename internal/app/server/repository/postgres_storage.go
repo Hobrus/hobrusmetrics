@@ -153,7 +153,12 @@ func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) er
 		if beginErr != nil {
 			return beginErr
 		}
-		defer tx.Rollback(ctx)
+		// ВАЖНО: проверяем (или игнорируем) ошибку при Rollback
+		defer func() {
+			if rerr := tx.Rollback(ctx); rerr != nil && rerr != pgx.ErrTxClosed {
+				fmt.Printf("rollback error: %v\n", rerr)
+			}
+		}()
 
 		_, execErr := tx.Exec(ctx, insertQuery)
 		if execErr != nil {
