@@ -6,9 +6,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
+	"github.com/Hobrus/hobrusmetrics.git/internal/pkg/retry"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type PostgresStorage struct {
@@ -26,6 +27,15 @@ func NewPostgresStorage(dbConn *DBConnection) (*PostgresStorage, error) {
 	return ps, nil
 }
 
+// execWithRetry оборачивает вызов Exec в retry.DoWithRetry.
+// Если возникла retriable ошибка (например, ошибка соединения класса 08), будет до 3 дополнительных попыток.
+func (ps *PostgresStorage) execWithRetry(ctx context.Context, query string, args ...any) error {
+	return retry.DoWithRetry(func() error {
+		_, err := ps.db.Pool.Exec(ctx, query, args...)
+		return err
+	})
+}
+
 func (ps *PostgresStorage) UpdateGauge(name string, value Gauge) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
@@ -37,9 +47,9 @@ func (ps *PostgresStorage) UpdateGauge(name string, value Gauge) {
 		  SET mtype = 'gauge',
 		      fvalue = EXCLUDED.fvalue; -- gauge перезаписываем
 	`
-	_, err := ps.db.Pool.Exec(context.Background(), query, name, float64(value))
+	err := ps.execWithRetry(context.Background(), query, name, float64(value))
 	if err != nil {
-		fmt.Printf("UpdateGauge error: %v\n", err)
+		fmt.Printf("UpdateGauge error after retries: %v\n", err)
 	}
 }
 
@@ -54,9 +64,9 @@ func (ps *PostgresStorage) UpdateCounter(name string, value Counter) {
 		  SET mtype = 'counter',
 		      ivalue = metrics.ivalue + EXCLUDED.ivalue; -- counter накапливаем
 	`
-	_, err := ps.db.Pool.Exec(context.Background(), query, name, int64(value))
+	err := ps.execWithRetry(context.Background(), query, name, int64(value))
 	if err != nil {
-		fmt.Printf("UpdateCounter error: %v\n", err)
+		fmt.Printf("UpdateCounter error after retries: %v\n", err)
 	}
 }
 
@@ -65,14 +75,7 @@ func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) er
 	defer ps.mu.Unlock()
 
 	ctx := context.Background()
-	tx, err := ps.db.Pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to begin tx: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
-
+	// Накопим метрики в map, чтобы не дублировать INSERT для одних и тех же имён
 	type dedupKey struct {
 		ID    string
 		MType string
@@ -100,6 +103,7 @@ func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) er
 			}
 		case "gauge":
 			if m.Value != nil {
+				// gauge перезаписываем
 				val.fValue = *m.Value
 			}
 		default:
@@ -143,18 +147,29 @@ func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) er
 	`
 	insertQuery = fmt.Sprintf(insertQuery, strings.Join(values, ","))
 
-	_, err = tx.Exec(ctx, insertQuery)
+	// Обёрнем сам insert в retry:
+	err := retry.DoWithRetry(func() error {
+		tx, beginErr := ps.db.Pool.Begin(ctx)
+		if beginErr != nil {
+			return beginErr
+		}
+		defer tx.Rollback(ctx)
+
+		_, execErr := tx.Exec(ctx, insertQuery)
+		if execErr != nil {
+			return execErr
+		}
+
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			return commitErr
+		}
+		return nil
+	})
+
 	if err != nil {
-		fmt.Printf("batch insert error: %v\n", err)
-		return fmt.Errorf("batch insert error: %w", err)
+		fmt.Printf("UpdateMetricsBatch error after retries: %v\n", err)
 	}
-
-	if err := tx.Commit(ctx); err != nil {
-		fmt.Printf("commit error: %v\n", err)
-		return fmt.Errorf("commit error: %w", err)
-	}
-
-	return nil
+	return err
 }
 
 func (ps *PostgresStorage) GetGauge(name string) (Gauge, bool) {
