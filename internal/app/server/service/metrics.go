@@ -19,6 +19,8 @@ type MetricsService struct {
 	Storage repository.Storage
 }
 
+// UpdateMetric обрабатывает обновление одной метрики по типу и имени.
+// Для counter значения накапливаются, для gauge значение перезаписывается.
 func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue string) error {
 	if metricName == "" {
 		return errors.New("metric name is required")
@@ -27,11 +29,11 @@ func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue strin
 
 	switch mt {
 	case GaugeMetric:
-		// Сначала проверим, что metricValue действительно float
+		// Проверим, что metricValue действительно float
 		if _, err := strconv.ParseFloat(metricValue, 64); err != nil {
 			return fmt.Errorf("invalid gauge value: %w", err)
 		}
-		// Сохраняем как «сырую» строку
+		// Сохраняем как «сырую» строку (но позже будем возвращать в каноническом формате)
 		return ms.Storage.UpdateGaugeRaw(metricName, metricValue)
 
 	case CounterMetric:
@@ -47,12 +49,14 @@ func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue strin
 	}
 }
 
+// UpdateMetricsBatch обрабатывает пакетное обновление метрик.
+// Возвращает уже «актуальные» значения метрик после обновления.
 func (ms *MetricsService) UpdateMetricsBatch(batch []middleware.MetricsJSON) ([]middleware.MetricsJSON, error) {
 	if err := ms.Storage.UpdateMetricsBatch(batch); err != nil {
 		return nil, err
 	}
 
-	// Соберём «обновлённые» значения, чтобы вернуть клиенту
+	// Формируем ответ с актуальными значениями.
 	var result []middleware.MetricsJSON
 	for _, m := range batch {
 		mt := strings.ToLower(string(m.MType))
@@ -70,8 +74,7 @@ func (ms *MetricsService) UpdateMetricsBatch(batch []middleware.MetricsJSON) ([]
 		case GaugeMetric:
 			raw, ok := ms.Storage.GetGaugeRaw(m.ID)
 			if ok {
-				// Возвращаем то, что лежит в raw (но т.к. response ждет float — парсим)
-				fv, _ := strconv.ParseFloat(raw, 64) // не ожидается ошибка
+				fv, _ := strconv.ParseFloat(raw, 64) // не ожидается ошибка, т.к. ранее проверяли
 				result = append(result, middleware.MetricsJSON{
 					ID:    m.ID,
 					MType: m.MType,
@@ -83,6 +86,8 @@ func (ms *MetricsService) UpdateMetricsBatch(batch []middleware.MetricsJSON) ([]
 	return result, nil
 }
 
+// GetMetricValue возвращает текущее значение одной метрики (в виде строки).
+// Для gauge мы теперь приводим число к каноническому формату через %g, чтобы убрать лишние ".0".
 func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string, error) {
 	mt := strings.ToLower(metricType)
 
@@ -92,8 +97,12 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 		if !ok {
 			return "", errors.New("metric not found")
 		}
-		// Возвращаем «сырой» текст gauge — он ровно такой, как был при update
-		return raw, nil
+		val, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return "", fmt.Errorf("invalid stored gauge value: %w", err)
+		}
+		// Используем %g, чтобы "42.0" форматировать как "42".
+		return fmt.Sprintf("%g", val), nil
 
 	case CounterMetric:
 		value, ok := ms.Storage.GetCounter(metricName)
@@ -107,15 +116,22 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 	}
 }
 
+// GetAllMetrics возвращает все метрики в виде "имя -> строковое представление".
+// Для gauge аналогично используем канонический формат через %g, чтобы убрать ненужные ".0".
 func (ms *MetricsService) GetAllMetrics() map[string]string {
 	result := make(map[string]string)
 
-	// gauges
+	// Обрабатываем gauges
 	for name, raw := range ms.Storage.GetAllGauges() {
-		result[name] = raw
+		if val, err := strconv.ParseFloat(raw, 64); err == nil {
+			result[name] = fmt.Sprintf("%g", val)
+		} else {
+			// Если вдруг парсинг не удался, вернём как есть — но в норме такое не должно происходить
+			result[name] = raw
+		}
 	}
 
-	// counters
+	// Обрабатываем counters
 	for name, c := range ms.Storage.GetAllCounters() {
 		result[name] = strconv.FormatInt(int64(c), 10)
 	}
