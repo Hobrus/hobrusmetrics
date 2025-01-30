@@ -9,7 +9,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/models"
-
 	"github.com/Hobrus/hobrusmetrics.git/internal/pkg/retry"
 )
 
@@ -24,7 +23,7 @@ type FileBackedStorage struct {
 
 func NewFileBackedStorage(filePath string, storeInterval time.Duration, restore bool, logger *logrus.Logger) (*FileBackedStorage, error) {
 	storage := &FileBackedStorage{
-		MemStorage:    *NewMemStorage(),
+		MemStorage:    *NewMemStorage(), // базируемся на памяти
 		filePath:      filePath,
 		storeInterval: storeInterval,
 		stopChan:      make(chan struct{}),
@@ -32,7 +31,6 @@ func NewFileBackedStorage(filePath string, storeInterval time.Duration, restore 
 	}
 
 	if restore {
-		// Загрузка из файла при старте.
 		if err := storage.LoadFromFile(); err != nil {
 			storage.logger.Warnf("Failed to load metrics from file: %v", err)
 		}
@@ -45,14 +43,11 @@ func NewFileBackedStorage(filePath string, storeInterval time.Duration, restore 
 	return storage, nil
 }
 
-// LoadFromFile теперь обёрнут в retry.DoWithRetry.
-// Если, например, файл временно заблокирован, мы попробуем повторить до 4 раз.
 func (s *FileBackedStorage) LoadFromFile() error {
 	var loadErr error
 	err := retry.DoWithRetry(func() error {
 		data, err := os.ReadFile(s.filePath)
 		if err != nil {
-			// Если файл не найден, это не временная ошибка — прерываем сразу.
 			if os.IsNotExist(err) {
 				return err
 			}
@@ -67,14 +62,13 @@ func (s *FileBackedStorage) LoadFromFile() error {
 		s.storeMutex.Lock()
 		defer s.storeMutex.Unlock()
 
-		// Update gauges
-		for name, value := range metricsData.Gauges {
-			s.MemStorage.UpdateGauge(name, Gauge(value))
+		// Восстанавливаем gauges (strings)
+		for name, raw := range metricsData.Gauges {
+			_ = s.MemStorage.UpdateGaugeRaw(name, raw) // можно логировать ошибку
 		}
-
-		// Update counters
-		for name, value := range metricsData.Counters {
-			s.MemStorage.UpdateCounter(name, Counter(value))
+		// Восстанавливаем counters
+		for name, cval := range metricsData.Counters {
+			s.MemStorage.UpdateCounter(name, Counter(cval))
 		}
 
 		return nil
@@ -85,25 +79,24 @@ func (s *FileBackedStorage) LoadFromFile() error {
 	return loadErr
 }
 
-// SaveToFile тоже обёрнут в retry. Например, если файл заблокирован.
 func (s *FileBackedStorage) SaveToFile() error {
 	s.storeMutex.Lock()
 	defer s.storeMutex.Unlock()
 
 	var saveErr error
 	err := retry.DoWithRetry(func() error {
-		// Преобразуем данные
-		gauges := make(map[string]float64)
-		for k, v := range s.MemStorage.GetAllGauges() {
-			gauges[k] = float64(v)
+		gauges := s.MemStorage.GetAllGauges()     // map[string]string
+		counters := s.MemStorage.GetAllCounters() // map[string]Counter
+
+		// Преобразуем Counters в int64
+		intCounters := make(map[string]int64, len(counters))
+		for k, v := range counters {
+			intCounters[k] = int64(v)
 		}
-		counters := make(map[string]int64)
-		for k, v := range s.MemStorage.GetAllCounters() {
-			counters[k] = int64(v)
-		}
+
 		metricsData := models.MetricsData{
 			Gauges:   gauges,
-			Counters: counters,
+			Counters: intCounters,
 		}
 
 		data, err := json.Marshal(metricsData)
@@ -115,9 +108,8 @@ func (s *FileBackedStorage) SaveToFile() error {
 		if err := os.WriteFile(tempFile, data, 0644); err != nil {
 			return err
 		}
-
 		if err := os.Rename(tempFile, s.filePath); err != nil {
-			os.Remove(tempFile)
+			_ = os.Remove(tempFile)
 			return err
 		}
 		return nil
@@ -149,20 +141,21 @@ func (s *FileBackedStorage) Shutdown() error {
 	return s.SaveToFile()
 }
 
-func (s *FileBackedStorage) UpdateGauge(name string, value Gauge) {
-	s.MemStorage.UpdateGauge(name, value)
+func (s *FileBackedStorage) UpdateGaugeRaw(name, rawValue string) error {
+	if err := s.MemStorage.UpdateGaugeRaw(name, rawValue); err != nil {
+		return err
+	}
 	if s.storeInterval == 0 {
-		// Если storeInterval=0 — сохраняем на диск сразу (с ретраями).
 		if err := s.SaveToFile(); err != nil {
 			s.logger.Errorf("Failed to save metrics after gauge update: %v", err)
 		}
 	}
+	return nil
 }
 
 func (s *FileBackedStorage) UpdateCounter(name string, value Counter) {
 	s.MemStorage.UpdateCounter(name, value)
 	if s.storeInterval == 0 {
-		// То же самое для counter.
 		if err := s.SaveToFile(); err != nil {
 			s.logger.Errorf("Failed to save metrics after counter update: %v", err)
 		}

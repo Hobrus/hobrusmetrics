@@ -11,6 +11,8 @@ import (
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
 )
 
+// Встроенные html-шаблоны
+//
 //go:embed template/*.html
 var templatesFS embed.FS
 
@@ -29,7 +31,6 @@ func (h *Handler) SetupRoutes(router *gin.Engine) {
 
 	router.POST("/update/", middleware.JSONUpdateMiddleware(h.ms))
 	router.POST("/value/", middleware.JSONValueMiddleware(h.ms))
-
 	router.POST("/updates/", h.updateBatchHandler)
 }
 
@@ -77,7 +78,6 @@ func (h *Handler) getAllMetricsHandler(c *gin.Context) {
 
 func (h *Handler) updateBatchHandler(c *gin.Context) {
 	var metricsBatch []middleware.MetricsJSON
-
 	if err := c.ShouldBindJSON(&metricsBatch); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON format"})
 		return
@@ -92,6 +92,5 @@ func (h *Handler) updateBatchHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, updated)
 }

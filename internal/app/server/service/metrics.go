@@ -3,7 +3,6 @@ package service
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 
@@ -24,15 +23,16 @@ func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue strin
 	if metricName == "" {
 		return errors.New("metric name is required")
 	}
-
 	mt := strings.ToLower(metricType)
+
 	switch mt {
 	case GaugeMetric:
-		val, err := strconv.ParseFloat(metricValue, 64)
-		if err != nil {
+		// Сначала проверим, что metricValue действительно float
+		if _, err := strconv.ParseFloat(metricValue, 64); err != nil {
 			return fmt.Errorf("invalid gauge value: %w", err)
 		}
-		ms.Storage.UpdateGauge(metricName, repository.Gauge(val))
+		// Сохраняем как «сырую» строку
+		return ms.Storage.UpdateGaugeRaw(metricName, metricValue)
 
 	case CounterMetric:
 		val, err := strconv.ParseInt(metricValue, 10, 64)
@@ -40,11 +40,11 @@ func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue strin
 			return fmt.Errorf("invalid counter value: %w", err)
 		}
 		ms.Storage.UpdateCounter(metricName, repository.Counter(val))
+		return nil
 
 	default:
 		return errors.New("unsupported metric type")
 	}
-	return nil
 }
 
 func (ms *MetricsService) UpdateMetricsBatch(batch []middleware.MetricsJSON) ([]middleware.MetricsJSON, error) {
@@ -52,35 +52,32 @@ func (ms *MetricsService) UpdateMetricsBatch(batch []middleware.MetricsJSON) ([]
 		return nil, err
 	}
 
+	// Соберём «обновлённые» значения, чтобы вернуть клиенту
 	var result []middleware.MetricsJSON
 	for _, m := range batch {
 		mt := strings.ToLower(string(m.MType))
-
 		switch mt {
 		case CounterMetric:
 			val, ok := ms.Storage.GetCounter(m.ID)
-			if !ok {
-				continue
+			if ok {
+				delta := int64(val)
+				result = append(result, middleware.MetricsJSON{
+					ID:    m.ID,
+					MType: m.MType,
+					Delta: &delta,
+				})
 			}
-			delta := int64(val)
-			result = append(result, middleware.MetricsJSON{
-				ID:    m.ID,
-				MType: m.MType,
-				Delta: &delta,
-			})
-
 		case GaugeMetric:
-			val, ok := ms.Storage.GetGauge(m.ID)
-			if !ok {
-				continue
+			raw, ok := ms.Storage.GetGaugeRaw(m.ID)
+			if ok {
+				// Возвращаем то, что лежит в raw (но т.к. response ждет float — парсим)
+				fv, _ := strconv.ParseFloat(raw, 64) // не ожидается ошибка
+				result = append(result, middleware.MetricsJSON{
+					ID:    m.ID,
+					MType: m.MType,
+					Value: &fv,
+				})
 			}
-			fv := float64(val)
-			result = append(result, middleware.MetricsJSON{
-				ID:    m.ID,
-				MType: m.MType,
-				Value: &fv,
-			})
-		default:
 		}
 	}
 	return result, nil
@@ -91,14 +88,12 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 
 	switch mt {
 	case GaugeMetric:
-		value, ok := ms.Storage.GetGauge(metricName)
+		raw, ok := ms.Storage.GetGaugeRaw(metricName)
 		if !ok {
 			return "", errors.New("metric not found")
 		}
-		log.Println("Metrics value: ", value)
-		returnValue := strconv.FormatFloat(float64(value), 'f', 17, 64)
-		log.Println("Metrics 2 value: ", returnValue)
-		return returnValue, nil
+		// Возвращаем «сырой» текст gauge — он ровно такой, как был при update
+		return raw, nil
 
 	case CounterMetric:
 		value, ok := ms.Storage.GetCounter(metricName)
@@ -115,14 +110,14 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 func (ms *MetricsService) GetAllMetrics() map[string]string {
 	result := make(map[string]string)
 
-	for name, g := range ms.Storage.GetAllGauges() {
-		log.Println("Metrics 3 value: ", g)
-		result[name] = strconv.FormatFloat(float64(g), 'f', 17, 64)
-		log.Println("Metrics 4 value: ", result[name])
+	// gauges
+	for name, raw := range ms.Storage.GetAllGauges() {
+		result[name] = raw
 	}
 
+	// counters
 	for name, c := range ms.Storage.GetAllCounters() {
-		result[name] = fmt.Sprintf("%d", c)
+		result[name] = strconv.FormatInt(int64(c), 10)
 	}
 
 	return result
