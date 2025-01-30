@@ -140,5 +140,5 @@ func parseGaugeOrFail(raw string) (float64, error) {
 }
 
 func floatToString(val float64) string {
-	return strconv.FormatFloat(val, 'g', 17, 64)
+	return strconv.FormatFloat(val, 'f', -1, 64)
 }

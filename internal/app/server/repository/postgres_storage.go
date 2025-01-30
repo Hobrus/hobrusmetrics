@@ -175,7 +175,7 @@ func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) er
 		case "gauge":
 			if m.Value != nil {
 				// Преобразуем float в строку (или можно хранить исходную строку m, если есть)
-				gstr := strconv.FormatFloat(*m.Value, 'g', 17, 64)
+				gstr := strconv.FormatFloat(*m.Value, 'f', -1, 64)
 				// Или, если хотите вообще НЕ терять исходную строку,
 				// тогда надо расширять middleware, чтобы она не теряла raw.
 				deduped[key].gRawVal = gstr
