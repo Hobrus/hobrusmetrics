@@ -67,7 +67,7 @@ func JSONUpdateMiddleware(metricsService MetricService) gin.HandlerFunc {
 				return
 			}
 			log.Println("Json value: ", metric.Value)
-			value = strconv.FormatFloat(*metric.Value, 'G', -1, 64)
+			value = strconv.FormatFloat(*metric.Value, 'f', 17, 64)
 			log.Println("Json 2 value: ", value)
 
 		default:

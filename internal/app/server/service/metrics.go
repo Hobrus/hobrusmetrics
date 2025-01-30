@@ -96,7 +96,7 @@ func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string,
 			return "", errors.New("metric not found")
 		}
 		log.Println("Metrics value: ", value)
-		returnValue := strconv.FormatFloat(float64(value), 'G', -1, 64)
+		returnValue := strconv.FormatFloat(float64(value), 'f', 17, 64)
 		log.Println("Metrics 2 value: ", returnValue)
 		return returnValue, nil
 
@@ -117,7 +117,7 @@ func (ms *MetricsService) GetAllMetrics() map[string]string {
 
 	for name, g := range ms.Storage.GetAllGauges() {
 		log.Println("Metrics 3 value: ", g)
-		result[name] = strconv.FormatFloat(float64(g), 'G', -1, 64)
+		result[name] = strconv.FormatFloat(float64(g), 'f', 17, 64)
 		log.Println("Metrics 4 value: ", result[name])
 	}
 
