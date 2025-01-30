@@ -22,6 +22,8 @@ func NewDBConnection(dsn string) (*DBConnection, error) {
 		return nil, fmt.Errorf("failed to parse database DSN: %w", err)
 	}
 
+	config.ConnConfig.RuntimeParams["extra_float_digits"] = "3"
+
 	config.MaxConns = 5
 	config.MinConns = 1
 	config.HealthCheckPeriod = 30 * time.Second
