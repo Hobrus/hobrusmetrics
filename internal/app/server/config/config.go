@@ -14,6 +14,8 @@ type Config struct {
 	Restore         bool
 
 	DatabaseDSN string
+	// Новый параметр ключа для подписи:
+	Key string
 }
 
 func NewConfig() *Config {
@@ -22,18 +24,19 @@ func NewConfig() *Config {
 		StoreInterval:   300 * time.Second,
 		FileStoragePath: "/tmp/metrics-db.json",
 		Restore:         true,
-		DatabaseDSN:     "", // по умолчанию пустая строка
+		DatabaseDSN:     "",
+		Key:             "",
 	}
 
-	// Parse flags
 	flag.StringVar(&cfg.ServerAddress, "a", cfg.ServerAddress, "HTTP server address")
 	storeInterval := flag.Int("i", int(cfg.StoreInterval.Seconds()), "Store interval in seconds")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "File storage path")
 	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "Restore metrics from file")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "Database DSN for PostgreSQL connection")
+	// Добавляем флаг для ключа:
+	flag.StringVar(&cfg.Key, "k", cfg.Key, "Key for HMAC SHA256 signing")
 	flag.Parse()
 
-	// Override with environment variables if present
 	if envAddress := os.Getenv("ADDRESS"); envAddress != "" {
 		cfg.ServerAddress = envAddress
 	}
@@ -56,6 +59,11 @@ func NewConfig() *Config {
 
 	if envDatabaseDSN := os.Getenv("DATABASE_DSN"); envDatabaseDSN != "" {
 		cfg.DatabaseDSN = envDatabaseDSN
+	}
+
+	// Читаем ключ из переменной окружения KEY (если задан)
+	if envKey := os.Getenv("KEY"); envKey != "" {
+		cfg.Key = envKey
 	}
 
 	return cfg

@@ -18,7 +18,8 @@ type Agent struct {
 func NewAgent() *Agent {
 	cfg := config.NewConfig()
 	metrics := collector.NewMetrics()
-	localSender := sender.NewSender(cfg.ServerAddress)
+	// Передаём ключ в конструктор Sender
+	localSender := sender.NewSender(cfg.ServerAddress, cfg.Key)
 
 	return &Agent{
 		Config:  cfg,

@@ -3,6 +3,9 @@ package sender
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,7 +14,6 @@ import (
 	"github.com/Hobrus/hobrusmetrics.git/internal/pkg/retry"
 )
 
-// Metrics описывает структуру метрики для передачи на сервер
 type Metrics struct {
 	ID    string   `json:"id"`
 	MType string   `json:"type"` // "counter" или "gauge"
@@ -22,16 +24,25 @@ type Metrics struct {
 type Sender struct {
 	ServerAddress string
 	Client        *http.Client
+	// Добавляем поле ключа:
+	Key string
 }
 
-func NewSender(serverAddress string) *Sender {
+func NewSender(serverAddress, key string) *Sender {
 	return &Sender{
 		ServerAddress: serverAddress,
 		Client:        &http.Client{},
+		Key:           key,
 	}
 }
 
-// compressData упаковывает данные в gzip.
+// computeHMAC вычисляет HMAC‑SHA256 от data с использованием key и возвращает шестнадцатеричную строку.
+func computeHMAC(data []byte, key string) string {
+	h := hmac.New(sha256.New, []byte(key))
+	h.Write(data)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 func compressData(data []byte) (*bytes.Buffer, error) {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
@@ -44,23 +55,18 @@ func compressData(data []byte) (*bytes.Buffer, error) {
 	return &buf, nil
 }
 
-// sendRequestWithRetry отправляет запрос с повторными попытками (до 4 раз),
-// если возникла временная (retriable) ошибка сети или статус сервера >= 500.
 func (s *Sender) sendRequestWithRetry(req *http.Request) (*http.Response, error) {
 	var resp *http.Response
 
 	err := retry.DoWithRetry(func() error {
 		r, doErr := s.Client.Do(req)
 		if doErr != nil {
-			// Если это временная сетевая ошибка — будет retriable.
 			return doErr
 		}
-		// Если сервер вернул 5xx, считаем это временной проблемой и тоже пытаемся повторить
 		if r.StatusCode >= 500 {
 			r.Body.Close()
 			return fmt.Errorf("server responded with %d", r.StatusCode)
 		}
-		// Иначе считаем, что успех
 		resp = r
 		return nil
 	})
@@ -68,8 +74,6 @@ func (s *Sender) sendRequestWithRetry(req *http.Request) (*http.Response, error)
 	return resp, err
 }
 
-// Send отправляет одну метрику на сервер (в gzip-формате).
-// Если возникнет временная ошибка, будет до 3 дополнительных попыток с интервалами 1с, 3с, 5с.
 func (s *Sender) Send(metrics map[string]interface{}) {
 	for name, val := range metrics {
 		var m Metrics
@@ -89,6 +93,11 @@ func (s *Sender) Send(metrics map[string]interface{}) {
 			log.Printf("marshal error: %v\n", err)
 			continue
 		}
+		// Если ключ задан – вычисляем хеш от исходных (JSON) данных.
+		var hashHeader string
+		if s.Key != "" {
+			hashHeader = computeHMAC(data, s.Key)
+		}
 
 		compressed, err := compressData(data)
 		if err != nil {
@@ -105,6 +114,9 @@ func (s *Sender) Send(metrics map[string]interface{}) {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Encoding", "gzip")
 		req.Header.Set("Accept-Encoding", "gzip")
+		if hashHeader != "" {
+			req.Header.Set("HashSHA256", hashHeader)
+		}
 
 		resp, err := s.sendRequestWithRetry(req)
 		if err != nil {
@@ -115,8 +127,6 @@ func (s *Sender) Send(metrics map[string]interface{}) {
 	}
 }
 
-// SendBatch отправляет пакет метрик за один запрос (в gzip-формате).
-// Также оборачиваем в retry.DoWithRetry.
 func (s *Sender) SendBatch(metrics map[string]interface{}) {
 	if len(metrics) == 0 {
 		return
@@ -144,6 +154,10 @@ func (s *Sender) SendBatch(metrics map[string]interface{}) {
 		log.Printf("marshal batch error: %v\n", err)
 		return
 	}
+	var hashHeader string
+	if s.Key != "" {
+		hashHeader = computeHMAC(data, s.Key)
+	}
 
 	compressed, err := compressData(data)
 	if err != nil {
@@ -160,6 +174,9 @@ func (s *Sender) SendBatch(metrics map[string]interface{}) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Accept-Encoding", "gzip")
+	if hashHeader != "" {
+		req.Header.Set("HashSHA256", hashHeader)
+	}
 
 	resp, err := s.sendRequestWithRetry(req)
 	if err != nil {

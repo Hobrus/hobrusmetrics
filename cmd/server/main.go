@@ -33,9 +33,6 @@ func main() {
 	}
 
 	// Выбираем хранилище:
-	// 1) PostgreSQL, если dbConn != nil
-	// 2) FileBackedStorage, если указан файл
-	// 3) In-memory, если ни БД, ни файл не заданы
 	var storage repository.Storage
 
 	switch {
@@ -80,16 +77,20 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(middleware.LoggingMiddleware(logger))
 
+	// Если ключ задан – добавляем middleware для проверки входящего запроса и подписи ответа.
+	if cfg.Key != "" {
+		router.Use(middleware.HashRequestMiddleware(cfg.Key))
+		router.Use(middleware.HashResponseMiddleware(cfg.Key))
+	}
+
 	handler.SetupRoutes(router)
 
 	router.GET("/ping", func(c *gin.Context) {
-		// Если dbConn == nil => считаем, что БД не настроена
 		if dbConn == nil {
 			c.String(http.StatusInternalServerError, "database not configured")
 			return
 		}
 
-		// Иначе делаем ping с таймаутом
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
 		defer cancel()
 
