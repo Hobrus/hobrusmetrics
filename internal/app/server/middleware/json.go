@@ -31,6 +31,7 @@ type MetricService interface {
 	GetMetricValue(metricType, metricName string) (string, error)
 }
 
+// JSONUpdateMiddleware обрабатывает POST /update/ для обновления одной метрики.
 func JSONUpdateMiddleware(metricsService MetricService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var metric MetricsJSON
@@ -60,7 +61,6 @@ func JSONUpdateMiddleware(metricsService MetricService) gin.HandlerFunc {
 				return
 			}
 			value = strconv.FormatInt(*metric.Delta, 10)
-
 		case string(GaugeMetric):
 			if metric.Value == nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "value is required for gauge"})
@@ -69,7 +69,6 @@ func JSONUpdateMiddleware(metricsService MetricService) gin.HandlerFunc {
 			log.Println("Json value: ", metric.Value)
 			value = strconv.FormatFloat(*metric.Value, 'f', -1, 64)
 			log.Println("Json 2 value: ", value)
-
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid metric type"})
 			return
@@ -103,6 +102,8 @@ func JSONUpdateMiddleware(metricsService MetricService) gin.HandlerFunc {
 	}
 }
 
+// JSONValueMiddleware обрабатывает POST /value/ для получения значения метрики.
+// Если в JSON не переданы id или type – возвращает 404 (metric not found).
 func JSONValueMiddleware(metricsService interface {
 	GetMetricValue(metricType, metricName string) (string, error)
 }) gin.HandlerFunc {
@@ -120,8 +121,9 @@ func JSONValueMiddleware(metricsService interface {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON format"})
 			return
 		}
+		// Если отсутствуют обязательные поля – возвращаем 404, как того требуют автотесты.
 		if metric.ID == "" || metric.MType == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "id and type are required"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "metric not found"})
 			return
 		}
 
