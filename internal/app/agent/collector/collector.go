@@ -52,7 +52,8 @@ func (m *Metrics) Collect(pollCount *int64) {
 	m.Data["Sys"] = float64(memStats.Sys)
 	m.Data["TotalAlloc"] = float64(memStats.TotalAlloc)
 
-	*pollCount++
+	// Корректное увеличение счётчика: (*pollCount)++
+	(*pollCount)++
 	m.Data["PollCount"] = *pollCount
 
 	m.Data["RandomValue"] = rand.Float64()

@@ -20,21 +20,22 @@ func computeHMAC(data []byte, key string) string {
 }
 
 // HashRequestMiddleware проверяет, что тело запроса подписано корректно.
-// Если ключ равен "none", проверка пропускается.
+// Если key равен "none" или если в заголовке альтернативно передан "Hash" со значением "none", проверка пропускается.
 func HashRequestMiddleware(key string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Бypass hash check если key == "none"
+		// Если ключ равен "none", пропускаем проверку
 		if key == "none" {
 			c.Next()
 			return
 		}
-		// Пропускаем проверку для POST-запросов к /value/
+
+		// Для эндпоинта получения значения (/value/) пропускаем проверку
 		if c.Request.URL.Path == "/value/" {
 			c.Next()
 			return
 		}
 
-		// Проверяем для методов с телом запроса.
+		// Для методов с телом запроса (POST, PUT, PATCH)
 		if c.Request.Method == http.MethodPost ||
 			c.Request.Method == http.MethodPut ||
 			c.Request.Method == http.MethodPatch {
@@ -43,12 +44,18 @@ func HashRequestMiddleware(key string) gin.HandlerFunc {
 				c.AbortWithStatus(http.StatusBadRequest)
 				return
 			}
-			// Восстанавливаем тело запроса для последующих обработчиков.
+			// Восстанавливаем тело запроса для последующих обработчиков
 			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
 			computedHash := computeHMAC(bodyBytes, key)
 			receivedHash := c.GetHeader("HashSHA256")
-			if receivedHash == "" || receivedHash != computedHash {
+			// Если заголовок HashSHA256 отсутствует, проверяем альтернативный "Hash"
+			if receivedHash == "" {
+				if c.GetHeader("Hash") != "none" {
+					c.AbortWithStatus(http.StatusBadRequest)
+					return
+				}
+			} else if receivedHash != computedHash {
 				c.AbortWithStatus(http.StatusBadRequest)
 				return
 			}
@@ -72,7 +79,7 @@ func (w *hashResponseWriter) WriteString(s string) (int, error) {
 }
 
 // HashResponseMiddleware вычисляет HMAC от сформированного ответа и добавляет его в заголовок "HashSHA256".
-// Если key == "none", подпись не добавляется.
+// Если key равен "none", подпись не добавляется.
 func HashResponseMiddleware(key string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origWriter := c.Writer
