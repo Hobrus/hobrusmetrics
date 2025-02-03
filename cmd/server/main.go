@@ -72,16 +72,16 @@ func main() {
 	metricsService := &service.MetricsService{Storage: storage}
 	handler := handlers.NewHandler(metricsService)
 
+	// Изменили порядок middleware: сначала Recovery, Logging и (при наличии ключа) хэширование,
+	// затем GzipMiddleware – чтобы подпись вычислялась от распакованного тела.
 	router := gin.New()
-	router.Use(middleware.GzipMiddleware())
 	router.Use(gin.Recovery())
 	router.Use(middleware.LoggingMiddleware(logger))
-
-	// Если ключ задан – добавляем middleware для проверки входящего запроса и подписи ответа.
 	if cfg.Key != "" {
 		router.Use(middleware.HashRequestMiddleware(cfg.Key))
 		router.Use(middleware.HashResponseMiddleware(cfg.Key))
 	}
+	router.Use(middleware.GzipMiddleware())
 
 	handler.SetupRoutes(router)
 

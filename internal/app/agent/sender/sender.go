@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 
@@ -15,7 +16,7 @@ import (
 )
 
 type Metrics struct {
-	ID    string   `json:"id"`
+	ID    string   `json:"id"`   // metric name
 	MType string   `json:"type"` // "counter" или "gauge"
 	Delta *int64   `json:"delta,omitempty"`
 	Value *float64 `json:"value,omitempty"`
@@ -24,7 +25,7 @@ type Metrics struct {
 type Sender struct {
 	ServerAddress string
 	Client        *http.Client
-	// Добавляем поле ключа:
+	// Поле ключа для подписи.
 	Key string
 }
 
@@ -55,10 +56,20 @@ func compressData(data []byte) (*bytes.Buffer, error) {
 	return &buf, nil
 }
 
+// sendRequestWithRetry выполняет HTTP-запрос с повторными попытками.
+// Теперь тело запроса считывается один раз и восстанавливается для каждой попытки.
 func (s *Sender) sendRequestWithRetry(req *http.Request) (*http.Response, error) {
 	var resp *http.Response
 
-	err := retry.DoWithRetry(func() error {
+	// Считываем тело запроса для последующих попыток.
+	bodyBytes, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	err = retry.DoWithRetry(func() error {
+		// Восстанавливаем тело запроса для каждой попытки.
+		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		r, doErr := s.Client.Do(req)
 		if doErr != nil {
 			return doErr
@@ -93,7 +104,7 @@ func (s *Sender) Send(metrics map[string]interface{}) {
 			log.Printf("marshal error: %v\n", err)
 			continue
 		}
-		// Если ключ задан – вычисляем хеш от исходных (JSON) данных.
+		// Если ключ задан – вычисляем хеш от исходных JSON-данных.
 		var hashHeader string
 		if s.Key != "" {
 			hashHeader = computeHMAC(data, s.Key)

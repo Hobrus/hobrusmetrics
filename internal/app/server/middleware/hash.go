@@ -20,18 +20,21 @@ func computeHMAC(data []byte, key string) string {
 }
 
 // HashRequestMiddleware проверяет, что тело запроса подписано корректно.
-// Для POST, PUT, PATCH-запросов с ключом проверяется соответствие вычисленного и полученного хеша.
-// При этом для JSON‑эндпоинта получения значения ("/value/") проверку пропускаем,
-// чтобы клиент, например, мог получать метрику даже без подписи.
+// Если ключ равен "none", проверка пропускается.
 func HashRequestMiddleware(key string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Если запрос к эндпоинту получения метрики по JSON (POST /value/), пропускаем проверку подписи.
+		// Бypass hash check если key == "none"
+		if key == "none" {
+			c.Next()
+			return
+		}
+		// Пропускаем проверку для POST-запросов к /value/
 		if c.Request.URL.Path == "/value/" {
 			c.Next()
 			return
 		}
 
-		// Проверяем для методов, где тело запроса присутствует.
+		// Проверяем для методов с телом запроса.
 		if c.Request.Method == http.MethodPost ||
 			c.Request.Method == http.MethodPut ||
 			c.Request.Method == http.MethodPatch {
@@ -40,7 +43,7 @@ func HashRequestMiddleware(key string) gin.HandlerFunc {
 				c.AbortWithStatus(http.StatusBadRequest)
 				return
 			}
-			// Восстанавливаем тело запроса для последующих обработчиков
+			// Восстанавливаем тело запроса для последующих обработчиков.
 			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
 			computedHash := computeHMAC(bodyBytes, key)
@@ -69,7 +72,7 @@ func (w *hashResponseWriter) WriteString(s string) (int, error) {
 }
 
 // HashResponseMiddleware вычисляет HMAC от сформированного ответа и добавляет его в заголовок "HashSHA256".
-// Кроме того, если в заголовках не указан Content-Type, то он устанавливается на основе содержимого.
+// Если key == "none", подпись не добавляется.
 func HashResponseMiddleware(key string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origWriter := c.Writer
@@ -82,11 +85,10 @@ func HashResponseMiddleware(key string) gin.HandlerFunc {
 		c.Next()
 
 		responseData := writer.body.Bytes()
-		if len(responseData) > 0 {
+		if key != "none" && len(responseData) > 0 {
 			hashValue := computeHMAC(responseData, key)
 			origWriter.Header().Set("HashSHA256", hashValue)
 		}
-		// Если Content-Type не установлен, определяем его по данным
 		if origWriter.Header().Get("Content-Type") == "" {
 			origWriter.Header().Set("Content-Type", http.DetectContentType(responseData))
 		}
