@@ -5,7 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -23,13 +23,13 @@ func HashRequestMiddleware(key string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Проверяем только для методов с телом (POST, PUT, PATCH)
 		if c.Request.Method == http.MethodPost || c.Request.Method == http.MethodPut || c.Request.Method == http.MethodPatch {
-			bodyBytes, err := ioutil.ReadAll(c.Request.Body)
+			bodyBytes, err := io.ReadAll(c.Request.Body)
 			if err != nil {
 				c.AbortWithStatus(http.StatusBadRequest)
 				return
 			}
 			// Восстанавливаем тело запроса для последующих обработчиков
-			c.Request.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
 			computedHash := computeHMAC(bodyBytes, key)
 			receivedHash := c.GetHeader("HashSHA256")
@@ -71,6 +71,8 @@ func HashResponseMiddleware(key string) gin.HandlerFunc {
 			origWriter.Header().Set("HashSHA256", hashValue)
 		}
 		origWriter.WriteHeaderNow()
-		origWriter.Write(responseData)
+		if _, err := origWriter.Write(responseData); err != nil {
+			// При необходимости можно добавить логирование ошибки.
+		}
 	}
 }
