@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -60,7 +61,10 @@ func (w *hashResponseWriter) WriteString(s string) (int, error) {
 func HashResponseMiddleware(key string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origWriter := c.Writer
-		writer := &hashResponseWriter{ResponseWriter: origWriter, body: new(bytes.Buffer)}
+		writer := &hashResponseWriter{
+			ResponseWriter: origWriter,
+			body:           new(bytes.Buffer),
+		}
 		c.Writer = writer
 
 		c.Next()
@@ -72,7 +76,7 @@ func HashResponseMiddleware(key string) gin.HandlerFunc {
 		}
 		origWriter.WriteHeaderNow()
 		if _, err := origWriter.Write(responseData); err != nil {
-			// При необходимости можно добавить логирование ошибки.
+			log.Printf("failed to write response data: %v", err)
 		}
 	}
 }
