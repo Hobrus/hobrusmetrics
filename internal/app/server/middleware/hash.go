@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// computeHMAC вычисляет HMAC‑SHA256 от data с использованием key.
+// computeHMAC вычисляет HMAC‑SHA256 от data с использованием key и возвращает шестнадцатеричную строку.
 func computeHMAC(data []byte, key string) string {
 	h := hmac.New(sha256.New, []byte(key))
 	h.Write(data)
@@ -20,10 +20,21 @@ func computeHMAC(data []byte, key string) string {
 }
 
 // HashRequestMiddleware проверяет, что тело запроса подписано корректно.
+// Для POST, PUT, PATCH-запросов с ключом проверяется соответствие вычисленного и полученного хеша.
+// При этом для JSON‑эндпоинта получения значения ("/value/") проверку пропускаем,
+// чтобы клиент, например, мог получать метрику даже без подписи.
 func HashRequestMiddleware(key string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Проверяем только для методов с телом (POST, PUT, PATCH)
-		if c.Request.Method == http.MethodPost || c.Request.Method == http.MethodPut || c.Request.Method == http.MethodPatch {
+		// Если запрос к эндпоинту получения метрики по JSON (POST /value/), пропускаем проверку подписи.
+		if c.Request.URL.Path == "/value/" {
+			c.Next()
+			return
+		}
+
+		// Проверяем для методов, где тело запроса присутствует.
+		if c.Request.Method == http.MethodPost ||
+			c.Request.Method == http.MethodPut ||
+			c.Request.Method == http.MethodPatch {
 			bodyBytes, err := io.ReadAll(c.Request.Body)
 			if err != nil {
 				c.AbortWithStatus(http.StatusBadRequest)
@@ -43,7 +54,7 @@ func HashRequestMiddleware(key string) gin.HandlerFunc {
 	}
 }
 
-// hashResponseWriter — кастомный ResponseWriter для буферизации ответа.
+// hashResponseWriter – кастомный ResponseWriter для буферизации ответа.
 type hashResponseWriter struct {
 	gin.ResponseWriter
 	body *bytes.Buffer
@@ -57,7 +68,8 @@ func (w *hashResponseWriter) WriteString(s string) (int, error) {
 	return w.body.WriteString(s)
 }
 
-// HashResponseMiddleware вычисляет HMAC от сформированного ответа и добавляет его в заголовок.
+// HashResponseMiddleware вычисляет HMAC от сформированного ответа и добавляет его в заголовок "HashSHA256".
+// Кроме того, если в заголовках не указан Content-Type, то он устанавливается на основе содержимого.
 func HashResponseMiddleware(key string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origWriter := c.Writer
@@ -74,6 +86,11 @@ func HashResponseMiddleware(key string) gin.HandlerFunc {
 			hashValue := computeHMAC(responseData, key)
 			origWriter.Header().Set("HashSHA256", hashValue)
 		}
+		// Если Content-Type не установлен, определяем его по данным
+		if origWriter.Header().Get("Content-Type") == "" {
+			origWriter.Header().Set("Content-Type", http.DetectContentType(responseData))
+		}
+
 		origWriter.WriteHeaderNow()
 		if _, err := origWriter.Write(responseData); err != nil {
 			log.Printf("failed to write response data: %v", err)
