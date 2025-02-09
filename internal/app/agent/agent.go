@@ -29,19 +29,50 @@ func NewAgent() *Agent {
 }
 
 func (a *Agent) Run() {
-	pollTicker := time.NewTicker(a.Config.PollInterval)
-	reportTicker := time.NewTicker(a.Config.ReportInterval)
-	defer pollTicker.Stop()
-	defer reportTicker.Stop()
+	// Канал для отправки снимков метрик
+	sendCh := make(chan map[string]interface{}, 100)
 
-	for {
-		select {
-		case <-pollTicker.C:
-			a.Metrics.Collect(&a.PollCount)
-
-		case <-reportTicker.C:
-			data := a.Metrics.GetAll()
-			a.Sender.SendBatch(data)
-		}
+	// Запускаем worker pool для отправки запросов,
+	// количество воркеров ограничено a.Config.RateLimit.
+	for i := 0; i < a.Config.RateLimit; i++ {
+		go func(workerID int) {
+			for task := range sendCh {
+				a.Sender.SendBatch(task)
+			}
+		}(i)
 	}
+
+	// Горутин для сбора runtime-метрик
+	go func() {
+		pollTicker := time.NewTicker(a.Config.PollInterval)
+		defer pollTicker.Stop()
+		for {
+			<-pollTicker.C
+			a.Metrics.Collect(&a.PollCount)
+		}
+	}()
+
+	// Горутин для сбора системных метрик (gopsutil)
+	go func() {
+		systemTicker := time.NewTicker(a.Config.PollInterval)
+		defer systemTicker.Stop()
+		for {
+			<-systemTicker.C
+			a.Metrics.CollectSystemMetrics()
+		}
+	}()
+
+	// Горутин для формирования отчёта и помещения снимка метрик в очередь на отправку
+	go func() {
+		reportTicker := time.NewTicker(a.Config.ReportInterval)
+		defer reportTicker.Stop()
+		for {
+			<-reportTicker.C
+			snapshot := a.Metrics.GetAll()
+			sendCh <- snapshot
+		}
+	}()
+
+	// Блокируем основную горутину (или можно обрабатывать сигналы завершения)
+	select {}
 }

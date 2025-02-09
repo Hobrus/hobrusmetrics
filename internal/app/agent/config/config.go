@@ -11,8 +11,10 @@ type Config struct {
 	ServerAddress  string
 	ReportInterval time.Duration
 	PollInterval   time.Duration
-	// Новый параметр ключа для подписи:
+	// Ключ для подписи
 	Key string
+	// Максимальное число одновременно выполняемых исходящих запросов
+	RateLimit int
 }
 
 func NewConfig() *Config {
@@ -21,13 +23,14 @@ func NewConfig() *Config {
 		ReportInterval: 10 * time.Second,
 		PollInterval:   2 * time.Second,
 		Key:            "",
+		RateLimit:      5, // значение по умолчанию (можно изменить)
 	}
 
 	flag.StringVar(&cfg.ServerAddress, "a", cfg.ServerAddress, "HTTP server address")
 	reportInterval := flag.Int("r", int(cfg.ReportInterval.Seconds()), "Report interval in seconds")
 	pollInterval := flag.Int("p", int(cfg.PollInterval.Seconds()), "Poll interval in seconds")
-	// Добавляем флаг для ключа:
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "Key for HMAC SHA256 signing")
+	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "Maximum number of concurrent outgoing requests (rate limit)")
 	flag.Parse()
 
 	if envAddress := os.Getenv("ADDRESS"); envAddress != "" {
@@ -47,9 +50,13 @@ func NewConfig() *Config {
 	} else {
 		cfg.PollInterval = time.Duration(*pollInterval) * time.Second
 	}
-	// Читаем ключ из переменной окружения KEY (если задан)
 	if envKey := os.Getenv("KEY"); envKey != "" {
 		cfg.Key = envKey
+	}
+	if envRateLimit := os.Getenv("RATE_LIMIT"); envRateLimit != "" {
+		if rl, err := strconv.Atoi(envRateLimit); err == nil {
+			cfg.RateLimit = rl
+		}
 	}
 	if flag.NArg() > 0 {
 		flag.Usage()
