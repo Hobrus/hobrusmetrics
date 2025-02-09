@@ -20,7 +20,7 @@ func computeHMAC(data []byte, key string) string {
 }
 
 // HashRequestMiddleware проверяет подпись входящего запроса.
-// Если в заголовке "Content-Encoding" указано gzip, тело сначала распаковывается,
+// Если в заголовке "Content-Encoding" указан gzip, тело сначала распаковывается,
 // чтобы вычислить хеш от исходного (не сжатого) содержимого.
 func HashRequestMiddleware(key string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -72,13 +72,8 @@ func HashRequestMiddleware(key string) gin.HandlerFunc {
 			// Вычисляем хеш от распакованных данных
 			computedHash := computeHMAC(bodyBytes, key)
 			receivedHash := c.GetHeader("HashSHA256")
-			if receivedHash == "" {
-				// Если отсутствует заголовок и заголовок "Hash" не равен "none" – отклоняем
-				if c.GetHeader("Hash") != "none" {
-					c.AbortWithStatus(http.StatusBadRequest)
-					return
-				}
-			} else if receivedHash != computedHash {
+			// Если заголовок присутствует – проверяем корректность; если его нет – пропускаем проверку.
+			if receivedHash != "" && receivedHash != computedHash {
 				c.AbortWithStatus(http.StatusBadRequest)
 				return
 			}
