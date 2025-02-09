@@ -24,8 +24,8 @@ func computeHMAC(data []byte, key string) string {
 // чтобы вычислить хеш от исходного (не сжатого) содержимого.
 func HashRequestMiddleware(key string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Если ключ равен "none", пропускаем проверку
-		if key == "none" {
+		// Если ключ отсутствует или равен "none", пропускаем проверку
+		if key == "" || key == "none" {
 			c.Next()
 			return
 		}
@@ -42,7 +42,7 @@ func HashRequestMiddleware(key string) gin.HandlerFunc {
 			var bodyBytes []byte
 			var err error
 
-			// Если запрос зашифрован (gzip), распаковываем тело
+			// Если запрос зашифрован (gzip) – распаковываем тело
 			if c.Request.Header.Get("Content-Encoding") == "gzip" {
 				gr, err := gzip.NewReader(c.Request.Body)
 				if err != nil {
@@ -73,6 +73,7 @@ func HashRequestMiddleware(key string) gin.HandlerFunc {
 			computedHash := computeHMAC(bodyBytes, key)
 			receivedHash := c.GetHeader("HashSHA256")
 			if receivedHash == "" {
+				// Если отсутствует заголовок и заголовок "Hash" не равен "none" – отклоняем
 				if c.GetHeader("Hash") != "none" {
 					c.AbortWithStatus(http.StatusBadRequest)
 					return
@@ -113,7 +114,8 @@ func HashResponseMiddleware(key string) gin.HandlerFunc {
 		c.Next()
 
 		responseData := writer.body.Bytes()
-		if key != "none" && len(responseData) > 0 {
+		// Генерируем подпись только если ключ задан и не равен "none"
+		if key != "" && key != "none" && len(responseData) > 0 {
 			hashValue := computeHMAC(responseData, key)
 			origWriter.Header().Set("HashSHA256", hashValue)
 		}
