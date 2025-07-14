@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -88,7 +89,7 @@ func (ps *PostgresStorage) GetGaugeRaw(name string) (string, bool) {
 	query := `SELECT mtype, grawvalue FROM metrics WHERE id = $1;`
 	err := ps.db.Pool.QueryRow(context.Background(), query, name).Scan(&mtype, &rawValue)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return "", false
 		}
 		fmt.Printf("GetGaugeRaw error: %v\n", err)
@@ -128,7 +129,7 @@ func (ps *PostgresStorage) GetCounter(name string) (Counter, bool) {
 	query := `SELECT mtype, ivalue FROM metrics WHERE id = $1;`
 	err := ps.db.Pool.QueryRow(context.Background(), query, name).Scan(&mtype, &iVal)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, false
 		}
 		fmt.Printf("GetCounter error: %v\n", err)

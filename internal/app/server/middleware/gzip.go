@@ -40,15 +40,15 @@ func (g *gzipWriter) WriteHeaderNow() {
 
 func (g *gzipWriter) Write(data []byte) (int, error) {
 	// Если Content-Type ещё не установлен, определяем его по данным
-	if g.Header().Get("Content-Type") == "" {
-		g.Header().Set("Content-Type", http.DetectContentType(data))
+	if g.ResponseWriter.Header().Get("Content-Type") == "" {
+		g.ResponseWriter.Header().Set("Content-Type", http.DetectContentType(data))
 	}
 	return g.writer.Write(data)
 }
 
 func (g *gzipWriter) WriteString(s string) (int, error) {
-	if g.Header().Get("Content-Type") == "" {
-		g.Header().Set("Content-Type", http.DetectContentType([]byte(s)))
+	if g.ResponseWriter.Header().Get("Content-Type") == "" {
+		g.ResponseWriter.Header().Set("Content-Type", http.DetectContentType([]byte(s)))
 	}
 	return g.writer.Write([]byte(s))
 }

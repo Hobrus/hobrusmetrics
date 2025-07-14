@@ -26,8 +26,8 @@ func (m *Metrics) Collect(pollCount *int64) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
-	m.Lock()
-	defer m.Unlock()
+	m.RWMutex.Lock()
+	defer m.RWMutex.Unlock()
 
 	m.Data["Alloc"] = float64(memStats.Alloc)
 	m.Data["BuckHashSys"] = float64(memStats.BuckHashSys)
@@ -65,8 +65,8 @@ func (m *Metrics) Collect(pollCount *int64) {
 
 // CollectSystemMetrics собирает дополнительные системные метрики с помощью gopsutil.
 func (m *Metrics) CollectSystemMetrics() {
-	m.Lock()
-	defer m.Unlock()
+	m.RWMutex.Lock()
+	defer m.RWMutex.Unlock()
 
 	vmStat, err := mem.VirtualMemory()
 	if err == nil {
@@ -88,8 +88,8 @@ func (m *Metrics) CollectSystemMetrics() {
 
 // GetAll возвращает копию всех собранных метрик.
 func (m *Metrics) GetAll() map[string]interface{} {
-	m.RLock()
-	defer m.RUnlock()
+	m.RWMutex.RLock()
+	defer m.RWMutex.RUnlock()
 
 	localCopy := make(map[string]interface{})
 	for k, v := range m.Data {
