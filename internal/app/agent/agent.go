@@ -30,7 +30,7 @@ func NewAgent() *Agent {
 
 func (a *Agent) Run() {
 	// Канал для отправки снимков метрик
-	sendCh := make(chan map[string]interface{}, 100)
+	sendCh := make(chan map[string]interface{}, a.Config.RateLimit)
 
 	// Запускаем worker pool для отправки запросов,
 	// количество воркеров ограничено a.Config.RateLimit.

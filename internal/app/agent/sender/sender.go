@@ -5,7 +5,7 @@ import (
 	"compress/gzip"
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/hex"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -37,11 +37,11 @@ func NewSender(serverAddress, key string) *Sender {
 	}
 }
 
-// computeHMAC вычисляет HMAC‑SHA256 от data с использованием key и возвращает шестнадцатеричную строку.
+// computeHMAC вычисляет HMAC‑SHA256 от data с использованием key и возвращает base64 строку.
 func computeHMAC(data []byte, key string) string {
 	h := hmac.New(sha256.New, []byte(key))
 	h.Write(data)
-	return hex.EncodeToString(h.Sum(nil))
+	return base64.StdEncoding.EncodeToString(h.Sum(nil))
 }
 
 func compressData(data []byte) (*bytes.Buffer, error) {

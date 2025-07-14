@@ -20,8 +20,8 @@ func computeHMAC(data []byte, key string) string {
 }
 
 // HashRequestMiddleware проверяет подпись входящего запроса.
-// Если в заголовке "Content-Encoding" указан gzip, тело сначала распаковывается,
-// чтобы вычислить хеш от исходного (не сжатого) содержимого.
+// Хеш вычисляется от данных в том виде, в котором они были переданы по сети,
+// включая сжатые данные, если применялось сжатие.
 func HashRequestMiddleware(key string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Если ключ отсутствует или равен "none", пропускаем проверку
@@ -42,40 +42,44 @@ func HashRequestMiddleware(key string) gin.HandlerFunc {
 			var bodyBytes []byte
 			var err error
 
-			// Если запрос зашифрован (gzip) – распаковываем тело
+			// Читаем тело запроса в исходном виде (как оно пришло по сети)
+			bodyBytes, err = io.ReadAll(c.Request.Body)
+			if err != nil {
+				c.AbortWithStatus(http.StatusBadRequest)
+				return
+			}
+
+			// Вычисляем хеш от исходных данных (в том виде, как они пришли)
+			computedHash := computeHMAC(bodyBytes, key)
+			receivedHash := c.GetHeader("HashSHA256")
+
+			// Если заголовок присутствует – проверяем корректность; если его нет – пропускаем проверку.
+			if receivedHash != "" && receivedHash != computedHash {
+				c.AbortWithStatus(http.StatusBadRequest)
+				return
+			}
+
+			// Если запрос был сжат gzip, распаковываем его для последующих обработчиков
 			if c.Request.Header.Get("Content-Encoding") == "gzip" {
-				gr, err := gzip.NewReader(c.Request.Body)
+				gr, err := gzip.NewReader(bytes.NewReader(bodyBytes))
 				if err != nil {
 					c.AbortWithStatus(http.StatusBadRequest)
 					return
 				}
-				bodyBytes, err = io.ReadAll(gr)
+				decompressedData, err := io.ReadAll(gr)
 				gr.Close()
 				if err != nil {
 					c.AbortWithStatus(http.StatusBadRequest)
 					return
 				}
+				// Восстанавливаем тело запроса с распакованными данными
+				c.Request.Body = io.NopCloser(bytes.NewBuffer(decompressedData))
 				// Убираем заголовок, чтобы последующие middleware не пытались снова распаковывать тело
 				c.Request.Header.Del("Content-Encoding")
-				c.Request.ContentLength = int64(len(bodyBytes))
+				c.Request.ContentLength = int64(len(decompressedData))
 			} else {
-				bodyBytes, err = io.ReadAll(c.Request.Body)
-				if err != nil {
-					c.AbortWithStatus(http.StatusBadRequest)
-					return
-				}
-			}
-
-			// Восстанавливаем тело запроса для последующих обработчиков
-			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-
-			// Вычисляем хеш от распакованных данных
-			computedHash := computeHMAC(bodyBytes, key)
-			receivedHash := c.GetHeader("HashSHA256")
-			// Если заголовок присутствует – проверяем корректность; если его нет – пропускаем проверку.
-			if receivedHash != "" && receivedHash != computedHash {
-				c.AbortWithStatus(http.StatusBadRequest)
-				return
+				// Восстанавливаем тело запроса для последующих обработчиков
+				c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 			}
 		}
 		c.Next()
