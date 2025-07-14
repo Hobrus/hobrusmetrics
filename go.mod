@@ -1,6 +1,6 @@
 module github.com/Hobrus/hobrusmetrics.git
 
-go 1.22.7
+go 1.23.0
 
 require (
 	github.com/gin-gonic/gin v1.10.0
