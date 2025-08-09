@@ -4,6 +4,7 @@ import (
 	"embed"
 	"html/template"
 	"net/http"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
@@ -64,16 +65,22 @@ func (h *Handler) getValueHandler(c *gin.Context) {
 func (h *Handler) getAllMetricsHandler(c *gin.Context) {
 	metrics := h.ms.GetAllMetrics()
 
-	tmpl, err := template.ParseFS(templatesFS, "template/metrics.html")
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Error rendering template")
-		return
-	}
-
 	c.Header("Content-Type", "text/html")
-	if err := tmpl.Execute(c.Writer, metrics); err != nil {
+	if err := getTemplate().Execute(c.Writer, metrics); err != nil {
 		c.String(http.StatusInternalServerError, "Error rendering template")
 	}
+}
+
+var (
+	tmplOnce     sync.Once
+	tmplCompiled *template.Template
+)
+
+func getTemplate() *template.Template {
+	tmplOnce.Do(func() {
+		tmplCompiled = template.Must(template.ParseFS(templatesFS, "template/metrics.html"))
+	})
+	return tmplCompiled
 }
 
 func (h *Handler) updateBatchHandler(c *gin.Context) {

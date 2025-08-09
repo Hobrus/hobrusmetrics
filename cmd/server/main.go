@@ -16,6 +16,8 @@ import (
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/repository"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
+
+	_ "net/http/pprof"
 )
 
 func main() {
@@ -71,6 +73,13 @@ func main() {
 
 	metricsService := &service.MetricsService{Storage: storage}
 	handler := handlers.NewHandler(metricsService)
+
+	// Запускаем pprof-сервер на localhost:6060
+	go func() {
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil && err != http.ErrServerClosed {
+			logger.Warnf("pprof server error: %v", err)
+		}
+	}()
 
 	// Изменили порядок middleware: сначала Recovery, Logging и (при наличии ключа) хэширование,
 	// затем GzipMiddleware – чтобы подпись вычислялась от распакованного тела.

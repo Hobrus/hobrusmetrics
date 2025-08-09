@@ -1,10 +1,7 @@
 package middleware
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -35,15 +32,7 @@ type MetricService interface {
 func JSONUpdateMiddleware(metricsService MetricService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var metric MetricsJSON
-
-		body, err := io.ReadAll(c.Request.Body)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
-			return
-		}
-		c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
-
-		if err := json.Unmarshal(body, &metric); err != nil {
+		if err := json.NewDecoder(c.Request.Body).Decode(&metric); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON format"})
 			return
 		}
@@ -66,9 +55,7 @@ func JSONUpdateMiddleware(metricsService MetricService) gin.HandlerFunc {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "value is required for gauge"})
 				return
 			}
-			log.Println("Json value: ", metric.Value)
 			value = strconv.FormatFloat(*metric.Value, 'f', -1, 64)
-			log.Println("Json 2 value: ", value)
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid metric type"})
 			return
@@ -109,15 +96,7 @@ func JSONValueMiddleware(metricsService interface {
 }) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var metric MetricsJSON
-
-		body, err := io.ReadAll(c.Request.Body)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
-			return
-		}
-		c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
-
-		if err := json.Unmarshal(body, &metric); err != nil {
+		if err := json.NewDecoder(c.Request.Body).Decode(&metric); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON format"})
 			return
 		}

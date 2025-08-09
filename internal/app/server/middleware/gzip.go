@@ -1,12 +1,15 @@
 package middleware
 
 import (
+	"bytes"
 	"compress/gzip"
 	"io"
 	"mime"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 )
@@ -80,6 +83,26 @@ func isGzipCompatible(c *gin.Context) bool {
 	return compressibleMIMETypes[baseType]
 }
 
+var gzipWriterPool = sync.Pool{New: func() any {
+	// Создаём writer один раз с нужным уровнем, дальше будем Reset на нужный io.Writer
+	w, _ := gzip.NewWriterLevel(io.Discard, gzip.BestCompression)
+	return w
+}}
+
+var (
+	gzipPoolOnce    sync.Once
+	gzipPoolEnabled = true
+)
+
+func useGzipPool() bool {
+	gzipPoolOnce.Do(func() {
+		if v := os.Getenv("GZIP_POOL"); v == "0" || strings.EqualFold(v, "false") {
+			gzipPoolEnabled = false
+		}
+	})
+	return gzipPoolEnabled
+}
+
 // GzipMiddleware сжимает входящие ответы (а также распаковывает входящие запросы, если они зашифрованы gzip).
 func GzipMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -98,17 +121,28 @@ func GzipMiddleware() gin.HandlerFunc {
 				return
 			}
 
-			c.Request.Body = io.NopCloser(strings.NewReader(string(body)))
+			c.Request.Body = io.NopCloser(bytes.NewReader(body))
 			c.Request.Header.Del("Content-Encoding")
 			c.Request.ContentLength = int64(len(body))
 		}
 
 		// Если ответ можно сжать – оборачиваем ResponseWriter в gzipWriter
 		if isGzipCompatible(c) {
-			gz, err := gzip.NewWriterLevel(c.Writer, gzip.BestCompression)
-			if err != nil {
-				c.Next()
-				return
+			var (
+				gz       *gzip.Writer
+				fromPool bool
+			)
+			if useGzipPool() {
+				gz = gzipWriterPool.Get().(*gzip.Writer)
+				gz.Reset(c.Writer)
+				fromPool = true
+			} else {
+				var err error
+				gz, err = gzip.NewWriterLevel(c.Writer, gzip.BestCompression)
+				if err != nil {
+					c.Next()
+					return
+				}
 			}
 
 			gw := &gzipWriter{
@@ -121,7 +155,10 @@ func GzipMiddleware() gin.HandlerFunc {
 			c.Header("Vary", "Accept-Encoding")
 
 			defer func() {
-				gz.Close()
+				_ = gz.Close()
+				if fromPool {
+					gzipWriterPool.Put(gz)
+				}
 			}()
 		}
 
