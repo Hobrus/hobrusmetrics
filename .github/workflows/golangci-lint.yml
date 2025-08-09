@@ -1,25 +1,34 @@
 name: golangci-lint
+
 on:
-  pull_request:
   push:
-    branches:
-      - main
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
 
 permissions:
   contents: read
-  # Optional: allow read access to pull request. Use with `only-new-issues` option.
-  # pull-requests: read
 
 jobs:
-  golangci:
-    name: lint
+  lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          go-version: stable
-      - name: golangci-lint
+          go-version-file: go.mod
+          cache: true
+
+      - name: Force local toolchain (avoid auto-switching)
+        run: echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
+
+      - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.60
+          version: latest
+          only-new-issues: false
+          args: --timeout=5m
+
