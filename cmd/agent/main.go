@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/Hobrus/hobrusmetrics.git/internal/app/agent"
 	"log"
+
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/agent"
 )
 
 func main() {
