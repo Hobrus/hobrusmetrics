@@ -8,6 +8,8 @@ import (
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/agent/sender"
 )
 
+// Agent инкапсулирует конфигурацию, сбор метрик и отправку данных.
+// Экземпляр агента периодически собирает метрики и отправляет их на сервер.
 type Agent struct {
 	Config    *config.Config
 	Metrics   *collector.Metrics
@@ -15,6 +17,7 @@ type Agent struct {
 	PollCount int64
 }
 
+// NewAgent создаёт и настраивает новый экземпляр агента.
 func NewAgent() *Agent {
 	cfg := config.NewConfig()
 	metrics := collector.NewMetrics()
@@ -28,6 +31,8 @@ func NewAgent() *Agent {
 	}
 }
 
+// Run запускает фоновые задачи агента для сбора и отправки метрик
+// и блокирует текущую горутину.
 func (a *Agent) Run() {
 	// Канал для отправки снимков метрик
 	sendCh := make(chan map[string]interface{}, a.Config.RateLimit)

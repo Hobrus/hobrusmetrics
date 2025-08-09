@@ -1,5 +1,6 @@
 package models
 
+// Metrics описывает единичную метрику для JSON-обмена.
 type Metrics struct {
 	ID    string   `json:"id"`              // metric name
 	MType string   `json:"type"`            // gauge or counter

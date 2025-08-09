@@ -10,6 +10,7 @@ import (
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/repository"
 )
 
+// Допустимые типы метрик в сервисном слое.
 const (
 	GaugeMetric   = "gauge"
 	CounterMetric = "counter"
@@ -19,6 +20,7 @@ type MetricsService struct {
 	Storage repository.Storage
 }
 
+// MetricsService реализует бизнес-логику обновления и чтения метрик.
 // UpdateMetric обрабатывает обновление одной метрики по типу и имени.
 // Для counter значения накапливаются, для gauge значение перезаписывается.
 func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue string) error {

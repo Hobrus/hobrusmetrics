@@ -13,7 +13,8 @@ import (
 	"github.com/Hobrus/hobrusmetrics.git/internal/pkg/retry"
 )
 
-// PostgresStorage — хранит counter в ivalue, а gauge как строку в grawvalue
+// PostgresStorage — реализация Storage на PostgreSQL.
+// Counter хранится в колонке ivalue, gauge — как строка в grawvalue.
 type PostgresStorage struct {
 	db *DBConnection
 	mu sync.RWMutex
@@ -50,6 +51,7 @@ func (db *DBConnection) CreateMetricsTable(ctx context.Context) error {
 	return nil
 }
 
+// NewPostgresStorage создаёт хранилище и убеждается, что таблица метрик существует.
 func NewPostgresStorage(dbConn *DBConnection) (*PostgresStorage, error) {
 	ps := &PostgresStorage{db: dbConn}
 	if err := dbConn.CreateMetricsTable(context.Background()); err != nil {
@@ -60,6 +62,7 @@ func NewPostgresStorage(dbConn *DBConnection) (*PostgresStorage, error) {
 
 // ========== gauge ==========
 
+// UpdateGaugeRaw обновляет значение gauge, валидируя ввод.
 func (ps *PostgresStorage) UpdateGaugeRaw(name, rawValue string) error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
@@ -79,6 +82,7 @@ func (ps *PostgresStorage) UpdateGaugeRaw(name, rawValue string) error {
 	return ps.execWithRetry(context.Background(), query, name, rawValue)
 }
 
+// GetGaugeRaw возвращает строковое значение gauge и признак наличия.
 func (ps *PostgresStorage) GetGaugeRaw(name string) (string, bool) {
 	ps.mu.RLock()
 	defer ps.mu.RUnlock()
@@ -102,6 +106,7 @@ func (ps *PostgresStorage) GetGaugeRaw(name string) (string, bool) {
 
 // ========== counter ==========
 
+// UpdateCounter накапливает значение counter.
 func (ps *PostgresStorage) UpdateCounter(name string, value Counter) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
@@ -119,6 +124,7 @@ func (ps *PostgresStorage) UpdateCounter(name string, value Counter) {
 	}
 }
 
+// GetCounter возвращает значение counter и признак наличия.
 func (ps *PostgresStorage) GetCounter(name string) (Counter, bool) {
 	ps.mu.RLock()
 	defer ps.mu.RUnlock()
@@ -142,6 +148,7 @@ func (ps *PostgresStorage) GetCounter(name string) (Counter, bool) {
 
 // ========== batch update ==========
 
+// UpdateMetricsBatch выполняет пакетное обновление метрик с дедупликацией в рамках запроса.
 func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
@@ -246,6 +253,7 @@ func (ps *PostgresStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) er
 
 // ========== getAll* ==========
 
+// GetAllGauges возвращает все gauge в виде name -> raw value.
 func (ps *PostgresStorage) GetAllGauges() map[string]string {
 	ps.mu.RLock()
 	defer ps.mu.RUnlock()
@@ -269,6 +277,7 @@ func (ps *PostgresStorage) GetAllGauges() map[string]string {
 	return gauges
 }
 
+// GetAllCounters возвращает все counter в виде name -> value.
 func (ps *PostgresStorage) GetAllCounters() map[string]Counter {
 	ps.mu.RLock()
 	defer ps.mu.RUnlock()
@@ -293,11 +302,12 @@ func (ps *PostgresStorage) GetAllCounters() map[string]Counter {
 	return counters
 }
 
+// Shutdown закрывать нечего: соединением управляет DBConnection.
 func (ps *PostgresStorage) Shutdown() error {
 	return nil
 }
 
-// Вспомогательная функция для Exec с retry
+// execWithRetry — вспомогательный вызов Exec с повторными попытками.
 func (ps *PostgresStorage) execWithRetry(ctx context.Context, query string, args ...any) error {
 	return retry.DoWithRetry(func() error {
 		_, err := ps.db.Pool.Exec(ctx, query, args...)

@@ -11,9 +11,11 @@ import (
 )
 
 // backoffIntervals описывает интервалы ожидания между повторными попытками.
+// var, чтобы в тестах можно было временно переопределить интервалы.
 var backoffIntervals = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
 
 // IsRetriableNetError проверяет, является ли ошибка сетевой и «временной».
+// Возвращает true для Timeout и ряда типичных сетевых ошибок.
 func IsRetriableNetError(err error) bool {
 	var netErr net.Error
 	if !errors.As(err, &netErr) {
@@ -61,7 +63,7 @@ func IsRetriableFileError(err error) bool {
 	return false
 }
 
-// DoWithRetry делает до 4 попыток вызвать fn().
+// DoWithRetry делает до 4 попыток вызвать fn() с паузами между попытками.
 func DoWithRetry(fn func() error) error {
 	var lastErr error
 	for i := 0; i <= len(backoffIntervals); i++ {

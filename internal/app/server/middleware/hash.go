@@ -87,6 +87,7 @@ func HashRequestMiddleware(key string) gin.HandlerFunc {
 }
 
 // hashResponseWriter – обёртка для ResponseWriter, которая буферизует ответ.
+// Используется для вычисления подписи по итоговому телу ответа.
 type hashResponseWriter struct {
 	gin.ResponseWriter
 	body *bytes.Buffer

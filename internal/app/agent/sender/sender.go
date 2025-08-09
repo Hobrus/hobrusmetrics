@@ -15,6 +15,7 @@ import (
 	"github.com/Hobrus/hobrusmetrics.git/internal/pkg/retry"
 )
 
+// Metrics описывает метрику для передачи от агента на сервер.
 type Metrics struct {
 	ID    string   `json:"id"`   // metric name
 	MType string   `json:"type"` // "counter" или "gauge"
@@ -22,6 +23,7 @@ type Metrics struct {
 	Value *float64 `json:"value,omitempty"`
 }
 
+// Sender отвечает за отправку метрик на сервер с учётом gzip и HMAC-подписи.
 type Sender struct {
 	ServerAddress string
 	Client        *http.Client
@@ -29,6 +31,7 @@ type Sender struct {
 	Key string
 }
 
+// NewSender создаёт новый экземпляр отправителя.
 func NewSender(serverAddress, key string) *Sender {
 	return &Sender{
 		ServerAddress: serverAddress,
@@ -85,6 +88,7 @@ func (s *Sender) sendRequestWithRetry(req *http.Request) (*http.Response, error)
 	return resp, err
 }
 
+// Send отправляет единичные метрики по одному в эндпоинт /update/.
 func (s *Sender) Send(metrics map[string]interface{}) {
 	for name, val := range metrics {
 		var m Metrics
@@ -138,6 +142,7 @@ func (s *Sender) Send(metrics map[string]interface{}) {
 	}
 }
 
+// SendBatch отправляет набор метрик одним запросом в эндпоинт /updates/.
 func (s *Sender) SendBatch(metrics map[string]interface{}) {
 	if len(metrics) == 0 {
 		return

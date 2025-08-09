@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// MetricType представляет допустимые типы метрик в JSON.
 type MetricType string
 
 const (
@@ -16,6 +17,7 @@ const (
 	GaugeMetric   MetricType = "gauge"
 )
 
+// MetricsJSON — форма JSON-представления метрики для REST-эндпоинтов.
 type MetricsJSON struct {
 	ID    string     `json:"id"`
 	MType MetricType `json:"type"`
@@ -29,6 +31,7 @@ type MetricService interface {
 }
 
 // JSONUpdateMiddleware обрабатывает POST /update/ для обновления одной метрики.
+// Возвращает актуализированное значение метрики в JSON.
 func JSONUpdateMiddleware(metricsService MetricService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var metric MetricsJSON

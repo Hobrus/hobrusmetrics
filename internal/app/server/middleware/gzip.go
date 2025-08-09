@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// compressibleMIMETypes содержит базовый набор типов, которые стоит сжимать.
 var compressibleMIMETypes = map[string]bool{
 	"text/html":                true,
 	"text/css":                 true,
@@ -103,7 +104,7 @@ func useGzipPool() bool {
 	return gzipPoolEnabled
 }
 
-// GzipMiddleware сжимает входящие ответы (а также распаковывает входящие запросы, если они зашифрованы gzip).
+// GzipMiddleware сжимает исходящие ответы (и распаковывает входящие запросы с Content-Encoding: gzip).
 func GzipMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Если запрос пришёл с заголовком Content-Encoding: gzip – распаковываем тело

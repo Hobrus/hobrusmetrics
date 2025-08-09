@@ -21,6 +21,8 @@ type FileBackedStorage struct {
 	logger        *logrus.Logger
 }
 
+// NewFileBackedStorage создаёт хранилище, сохраняющее данные на диск с заданным интервалом.
+// При restore=true выполняет попытку восстановить метрики из файла.
 func NewFileBackedStorage(filePath string, storeInterval time.Duration, restore bool, logger *logrus.Logger) (*FileBackedStorage, error) {
 	storage := &FileBackedStorage{
 		MemStorage:    *NewMemStorage(), // базируемся на памяти
@@ -43,6 +45,7 @@ func NewFileBackedStorage(filePath string, storeInterval time.Duration, restore 
 	return storage, nil
 }
 
+// LoadFromFile восстанавливает метрики из файла хранения.
 func (s *FileBackedStorage) LoadFromFile() error {
 	var loadErr error
 	err := retry.DoWithRetry(func() error {
@@ -79,6 +82,7 @@ func (s *FileBackedStorage) LoadFromFile() error {
 	return loadErr
 }
 
+// SaveToFile сохраняет текущее состояние метрик на диск (атомарно через временный файл).
 func (s *FileBackedStorage) SaveToFile() error {
 	s.storeMutex.Lock()
 	defer s.storeMutex.Unlock()
@@ -120,6 +124,7 @@ func (s *FileBackedStorage) SaveToFile() error {
 	return saveErr
 }
 
+// periodicSave периодически сохраняет метрики согласно интервалу.
 func (s *FileBackedStorage) periodicSave() {
 	ticker := time.NewTicker(s.storeInterval)
 	defer ticker.Stop()
@@ -136,11 +141,13 @@ func (s *FileBackedStorage) periodicSave() {
 	}
 }
 
+// Shutdown останавливает фоновые сохранения и выполняет финальное сохранение.
 func (s *FileBackedStorage) Shutdown() error {
 	close(s.stopChan)
 	return s.SaveToFile()
 }
 
+// UpdateGaugeRaw обновляет gauge и при нулевом интервале сразу сохраняет на диск.
 func (s *FileBackedStorage) UpdateGaugeRaw(name, rawValue string) error {
 	if err := s.MemStorage.UpdateGaugeRaw(name, rawValue); err != nil {
 		return err
@@ -153,6 +160,7 @@ func (s *FileBackedStorage) UpdateGaugeRaw(name, rawValue string) error {
 	return nil
 }
 
+// UpdateCounter обновляет counter и при нулевом интервале сразу сохраняет на диск.
 func (s *FileBackedStorage) UpdateCounter(name string, value Counter) {
 	s.MemStorage.UpdateCounter(name, value)
 	if s.storeInterval == 0 {

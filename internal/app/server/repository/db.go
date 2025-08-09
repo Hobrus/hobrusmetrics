@@ -12,6 +12,8 @@ type DBConnection struct {
 	Pool *pgxpool.Pool
 }
 
+// NewDBConnection устанавливает пул соединений к PostgreSQL по DSN.
+// При пустом DSN возвращает nil без ошибки.
 func NewDBConnection(dsn string) (*DBConnection, error) {
 	if dsn == "" {
 		return nil, nil
@@ -42,10 +44,7 @@ func NewDBConnection(dsn string) (*DBConnection, error) {
 }
 
 // CreateMetricsTable создаёт таблицу для хранения метрик, если она не существует.
-// В качестве примера в одной таблице хранятся и counter, и gauge:
-//   - mtype = 'counter' или 'gauge'
-//   - ivalue — для counter
-//   - fvalue — для gauge
+// В одной таблице хранятся и counter, и gauge.
 
 func (db *DBConnection) Ping(ctx context.Context) error {
 	if db == nil || db.Pool == nil {

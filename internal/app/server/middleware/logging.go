@@ -8,7 +8,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// responseWriter is a custom writer that captures the response size
+// responseWriter — обёртка для записи ответа, позволяющая измерять размер тела.
+// Используется для логирования характеристик ответа (статус, размер, длительность).
 type responseWriter struct {
 	gin.ResponseWriter
 	body *bytes.Buffer
@@ -19,7 +20,7 @@ func (w responseWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
-// LoggingMiddleware returns a middleware that logs request and response details
+// LoggingMiddleware возвращает middleware для логирования запросов и ответов.
 func LoggingMiddleware(logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Start timer

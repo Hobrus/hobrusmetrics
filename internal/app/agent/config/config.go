@@ -17,6 +17,7 @@ type Config struct {
 	RateLimit int
 }
 
+// NewConfig читает флаги и переменные окружения и возвращает конфигурацию агента.
 func NewConfig() *Config {
 	cfg := &Config{
 		ServerAddress:  "localhost:8080",
@@ -58,10 +59,7 @@ func NewConfig() *Config {
 			cfg.RateLimit = rl
 		}
 	}
-	if flag.NArg() > 0 {
-		flag.Usage()
-		os.Exit(1)
-	}
+	// Игнорируем позиционные аргументы: библиотечный код не должен завершать процесс.
 
 	return cfg
 }

@@ -20,6 +20,7 @@ import (
 	_ "net/http/pprof"
 )
 
+// Приложение HTTP-сервера метрик. Точка входа.
 func main() {
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})

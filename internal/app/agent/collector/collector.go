@@ -15,6 +15,7 @@ type Metrics struct {
 	Data map[string]interface{}
 }
 
+// NewMetrics создаёт контейнер для хранения собранных метрик.
 func NewMetrics() *Metrics {
 	return &Metrics{
 		Data: make(map[string]interface{}),
@@ -22,6 +23,7 @@ func NewMetrics() *Metrics {
 }
 
 // Collect собирает метрики runtime.
+// Обновляет счётчик опросов и сохраняет актуальные значения в карте Data.
 func (m *Metrics) Collect(pollCount *int64) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)

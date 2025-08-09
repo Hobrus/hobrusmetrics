@@ -18,6 +18,7 @@ type Config struct {
 	Key string
 }
 
+// NewConfig читает флаги и переменные окружения и возвращает конфигурацию сервера.
 func NewConfig() *Config {
 	cfg := &Config{
 		ServerAddress:   "localhost:8080",
