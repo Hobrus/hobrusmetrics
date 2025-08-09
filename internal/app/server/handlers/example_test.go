@@ -14,7 +14,7 @@ import (
 )
 
 // Example showing basic usage of JSON endpoints /update/ and /value/.
-func ExampleHandler_JSONEndpoints() {
+func Example() {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	ms := &service.MetricsService{Storage: repository.NewMemStorage()}
