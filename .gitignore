@@ -16,6 +16,9 @@ coverage.out
 cover.out
 cover.html
 profile.out
+coverage.txt
+coverage_all.txt
+coverage_func.txt
 
 # ---------- Python / Virtualenv ----------
 venv/

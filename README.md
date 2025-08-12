@@ -68,3 +68,44 @@ go tool pprof -http=:8080 http://localhost:6060/debug/pprof/heap
 ```
 
 Итог: оптимизации применены и дают снижение аллокаций и накладных расходов на обработку JSON и сжатие ответов, а также уменьшают латентность рендеринга HTML-страницы метрик за счёт кэширования шаблона. Встроенный pprof позволяет оперативно подтверждать эффект и искать дальнейшие точки для улучшений.
+
+## Покрытие тестами
+
+Ниже — быстрые команды для получения суммарного покрытия по всему модулю без сохранения артефактов в репозиторий.
+
+- Быстрый просмотр по пакетам:
+
+```bash
+go test ./... -cover
+```
+
+- Полное покрытие по всем пакетам с учётом перекрёстного покрытия и сохранением профиля:
+
+```bash
+go test -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
+```
+
+- Вывести строку с суммарным покрытием (последняя строка `total:`):
+  - macOS/Linux:
+
+```bash
+go tool cover -func=coverage.out | tail -n 1
+```
+
+  - Windows PowerShell:
+
+```powershell
+go tool cover -func=coverage.out | Select-String -Pattern 'total:'
+```
+
+- Сгенерировать HTML-отчёт (локально открыть в браузере):
+
+```bash
+go tool cover -html=coverage.out -o cover.html
+```
+
+Текстовые файлы с суммарным покрытием (например, `coverage_all.txt`, `coverage.txt`) не должны попадать в репозиторий — они уже добавлены в `.gitignore`. При необходимости можно сохранять локально, например:
+
+```powershell
+go tool cover -func=coverage.out | Select-String -Pattern 'total:' | Out-File -Encoding utf8 coverage_all.txt
+```
