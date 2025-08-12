@@ -11,6 +11,7 @@ require (
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0
+	github.com/tdakkota/asciicheck v0.4.1
 	github.com/timakin/bodyclose v0.0.0-20241222091800-1db5c5ca4d67
 	golang.org/x/tools v0.30.0
 	honnef.co/go/tools v0.6.1
