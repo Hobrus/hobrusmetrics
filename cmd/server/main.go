@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -107,8 +108,7 @@ func main() {
 		}
 	}()
 
-	// Изменили порядок middleware: сначала Recovery, Logging и (при наличии ключа) хэширование,
-	// затем GzipMiddleware – чтобы подпись вычислялась от распакованного тела.
+	// Порядок: Recovery, Logging, проверка подписи (если есть ключ), расшифровка (если есть приватный ключ), затем gzip.
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(middleware.LoggingMiddleware(logger))
@@ -116,6 +116,9 @@ func main() {
 		router.Use(middleware.HashRequestMiddleware(cfg.Key))
 		router.Use(middleware.HashResponseMiddleware(cfg.Key))
 	}
+	// Расшифровка после проверки подписи и до gzip-распаковки уже не требуется,
+	// так как HashRequestMiddleware сам распаковывает тело для последующих обработчиков.
+	router.Use(middleware.DecryptRequestMiddleware(cfg.CryptoKeyPath))
 	router.Use(middleware.GzipMiddleware())
 
 	handler.SetupRoutes(router)
@@ -165,7 +168,31 @@ func main() {
 	}()
 
 	logger.Infof("Server is running on %s", cfg.ServerAddress)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Fatalf("Failed to start server: %v", err)
+	if cfg.EnableHTTPS {
+		certFile := os.Getenv("TLS_CERT_FILE")
+		keyFile := os.Getenv("TLS_KEY_FILE")
+		if certFile == "" || keyFile == "" {
+			if _, err := os.Stat("server.crt"); err == nil {
+				certFile = "server.crt"
+			}
+			if _, err := os.Stat("server.key"); err == nil {
+				keyFile = "server.key"
+			}
+		}
+		if certFile == "" || keyFile == "" {
+			logger.Warn("ENABLE_HTTPS is set but TLS_CERT_FILE/TLS_KEY_FILE not provided; falling back to http")
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Fatalf("Failed to start server: %v", err)
+			}
+			return
+		}
+		logger.Infof("Starting HTTPS with cert=%s key=%s", filepath.Base(certFile), filepath.Base(keyFile))
+		if err := srv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
+			logger.Fatalf("Failed to start HTTPS server: %v", err)
+		}
+	} else {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatalf("Failed to start server: %v", err)
+		}
 	}
 }

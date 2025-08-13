@@ -23,6 +23,12 @@ func NewAgent() *Agent {
 	metrics := collector.NewMetrics()
 	// Передаём ключ в конструктор Sender
 	localSender := sender.NewSender(cfg.ServerAddress, cfg.Key)
+	if cfg.EnableHTTPS {
+		localSender.EnableHTTPS()
+	}
+	if cfg.CryptoKeyPath != "" {
+		_ = localSender.LoadRSAPublicKey(cfg.CryptoKeyPath)
+	}
 
 	return &Agent{
 		Config:  cfg,

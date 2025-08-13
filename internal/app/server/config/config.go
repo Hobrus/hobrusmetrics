@@ -16,6 +16,10 @@ type Config struct {
 	DatabaseDSN string
 	// Новый параметр ключа для подписи:
 	Key string
+	// Включение HTTPS через -s или ENABLE_HTTPS
+	EnableHTTPS bool
+	// Путь к приватному ключу RSA для расшифровки входящих сообщений (CRYPTO_KEY или -crypto-key)
+	CryptoKeyPath string
 }
 
 // NewConfig читает флаги и переменные окружения и возвращает конфигурацию сервера.
@@ -27,6 +31,8 @@ func NewConfig() *Config {
 		Restore:         true,
 		DatabaseDSN:     "",
 		Key:             "",
+		EnableHTTPS:     false,
+		CryptoKeyPath:   "",
 	}
 
 	flag.StringVar(&cfg.ServerAddress, "a", cfg.ServerAddress, "HTTP server address")
@@ -36,6 +42,10 @@ func NewConfig() *Config {
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "Database DSN for PostgreSQL connection")
 	// Добавляем флаг для ключа:
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "Key for HMAC SHA256 signing")
+	// Флаг включения HTTPS
+	flag.BoolVar(&cfg.EnableHTTPS, "s", cfg.EnableHTTPS, "Enable HTTPS (ListenAndServeTLS)")
+	// Флаг приватного ключа для асимметричного шифрования
+	flag.StringVar(&cfg.CryptoKeyPath, "crypto-key", cfg.CryptoKeyPath, "Path to RSA private key (PEM)")
 	flag.Parse()
 
 	if envAddress := os.Getenv("ADDRESS"); envAddress != "" {
@@ -65,6 +75,16 @@ func NewConfig() *Config {
 	// Читаем ключ из переменной окружения KEY (если задан)
 	if envKey := os.Getenv("KEY"); envKey != "" {
 		cfg.Key = envKey
+	}
+
+	if envEnableHTTPS := os.Getenv("ENABLE_HTTPS"); envEnableHTTPS != "" {
+		if v, err := strconv.ParseBool(envEnableHTTPS); err == nil {
+			cfg.EnableHTTPS = v
+		}
+	}
+
+	if envCryptoKey := os.Getenv("CRYPTO_KEY"); envCryptoKey != "" {
+		cfg.CryptoKeyPath = envCryptoKey
 	}
 
 	return cfg
