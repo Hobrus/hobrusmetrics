@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/Hobrus/hobrusmetrics.git/internal/pkg/buildinfo"
 )
 
 func captureStdout(t *testing.T, fn func()) string {
@@ -28,9 +30,9 @@ func captureStdout(t *testing.T, fn func()) string {
 }
 
 func TestPrintBuildInfo_Defaults(t *testing.T) {
-	buildVersion = ""
-	buildDate = ""
-	buildCommit = ""
+	buildinfo.Version = ""
+	buildinfo.Date = ""
+	buildinfo.Commit = ""
 
 	out := captureStdout(t, func() { printBuildInfo() })
 	if !strings.Contains(out, "Build version: N/A") {
@@ -45,9 +47,9 @@ func TestPrintBuildInfo_Defaults(t *testing.T) {
 }
 
 func TestPrintBuildInfo_WithValues(t *testing.T) {
-	buildVersion = "v1.2.3"
-	buildDate = "2025-01-02"
-	buildCommit = "abcdef1"
+	buildinfo.Version = "v1.2.3"
+	buildinfo.Date = "2025-01-02"
+	buildinfo.Commit = "abcdef1"
 
 	out := captureStdout(t, func() { printBuildInfo() })
 	if !strings.Contains(out, "Build version: v1.2.3") {

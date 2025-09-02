@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,32 +17,13 @@ import (
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/repository"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
+	"github.com/Hobrus/hobrusmetrics.git/internal/pkg/buildinfo"
 
 	_ "net/http/pprof"
 )
 
-// Build information is injected via -ldflags at build time.
-var buildVersion string
-var buildDate string
-var buildCommit string
-
-func printBuildInfo() {
-	version := buildVersion
-	if version == "" {
-		version = "N/A"
-	}
-	date := buildDate
-	if date == "" {
-		date = "N/A"
-	}
-	commit := buildCommit
-	if commit == "" {
-		commit = "N/A"
-	}
-	fmt.Printf("Build version: %s\n", version)
-	fmt.Printf("Build date: %s\n", date)
-	fmt.Printf("Build commit: %s\n", commit)
-}
+// Build information is injected via -ldflags at build time into internal/pkg/buildinfo.
+func printBuildInfo() { buildinfo.Print() }
 
 // Приложение HTTP-сервера метрик. Точка входа.
 func main() {

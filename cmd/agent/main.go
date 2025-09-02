@@ -1,34 +1,14 @@
 package main
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/agent"
+	"github.com/Hobrus/hobrusmetrics.git/internal/pkg/buildinfo"
 )
 
-// Build information is injected via -ldflags at build time.
-var buildVersion string
-var buildDate string
-var buildCommit string
-
-func printBuildInfo() {
-	version := buildVersion
-	if version == "" {
-		version = "N/A"
-	}
-	date := buildDate
-	if date == "" {
-		date = "N/A"
-	}
-	commit := buildCommit
-	if commit == "" {
-		commit = "N/A"
-	}
-	fmt.Printf("Build version: %s\n", version)
-	fmt.Printf("Build date: %s\n", date)
-	fmt.Printf("Build commit: %s\n", commit)
-}
+// Build information is injected via -ldflags at build time into internal/pkg/buildinfo.
+func printBuildInfo() { buildinfo.Print() }
 
 // Точка входа агента сбора метрик.
 func main() {
