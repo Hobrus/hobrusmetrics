@@ -21,16 +21,9 @@ import (
 	_ "net/http/pprof"
 )
 
-// Build information is injected via -ldflags at build time.
-var buildVersion string
-var buildDate string
-var buildCommit string
-
-func printBuildInfo() { buildinfo.Print(buildVersion, buildDate, buildCommit) }
-
 // Приложение HTTP-сервера метрик. Точка входа.
 func main() {
-	printBuildInfo()
+	buildinfo.PrintSelf()
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
 	logger.SetOutput(os.Stdout)

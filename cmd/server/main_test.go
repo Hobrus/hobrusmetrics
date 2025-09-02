@@ -4,15 +4,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Hobrus/hobrusmetrics.git/internal/pkg/buildinfo"
 	"github.com/Hobrus/hobrusmetrics.git/internal/pkg/testutil"
 )
 
 func TestPrintBuildInfo_Defaults(t *testing.T) {
-	buildVersion = ""
-	buildDate = ""
-	buildCommit = ""
+	buildinfo.Version = ""
+	buildinfo.Date = ""
+	buildinfo.Commit = ""
 
-	out := testutil.CaptureStdout(func() { printBuildInfo() })
+	out := testutil.CaptureStdout(func() { buildinfo.PrintSelf() })
 	if !strings.Contains(out, "Build version: N/A") {
 		t.Fatalf("expected version N/A, got: %q", out)
 	}
@@ -25,11 +26,11 @@ func TestPrintBuildInfo_Defaults(t *testing.T) {
 }
 
 func TestPrintBuildInfo_WithValues(t *testing.T) {
-	buildVersion = "v1.2.3"
-	buildDate = "2025-01-02"
-	buildCommit = "abcdef1"
+	buildinfo.Version = "v1.2.3"
+	buildinfo.Date = "2025-01-02"
+	buildinfo.Commit = "abcdef1"
 
-	out := testutil.CaptureStdout(func() { printBuildInfo() })
+	out := testutil.CaptureStdout(func() { buildinfo.PrintSelf() })
 	if !strings.Contains(out, "Build version: v1.2.3") {
 		t.Fatalf("expected version printed, got: %q", out)
 	}
