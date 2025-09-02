@@ -1,9 +1,13 @@
 package collector
 
 import (
+	"fmt"
 	"math/rand"
 	"runtime"
 	"sync"
+
+	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/mem"
 )
 
 type Metrics struct {
@@ -11,18 +15,21 @@ type Metrics struct {
 	Data map[string]interface{}
 }
 
+// NewMetrics создаёт контейнер для хранения собранных метрик.
 func NewMetrics() *Metrics {
 	return &Metrics{
 		Data: make(map[string]interface{}),
 	}
 }
 
+// Collect собирает метрики runtime.
+// Обновляет счётчик опросов и сохраняет актуальные значения в карте Data.
 func (m *Metrics) Collect(pollCount *int64) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
-	m.Lock()
-	defer m.Unlock()
+	m.RWMutex.Lock()
+	defer m.RWMutex.Unlock()
 
 	m.Data["Alloc"] = float64(memStats.Alloc)
 	m.Data["BuckHashSys"] = float64(memStats.BuckHashSys)
@@ -52,15 +59,39 @@ func (m *Metrics) Collect(pollCount *int64) {
 	m.Data["Sys"] = float64(memStats.Sys)
 	m.Data["TotalAlloc"] = float64(memStats.TotalAlloc)
 
-	*pollCount++
+	(*pollCount)++
 	m.Data["PollCount"] = *pollCount
 
 	m.Data["RandomValue"] = rand.Float64()
 }
 
+// CollectSystemMetrics собирает дополнительные системные метрики с помощью gopsutil.
+func (m *Metrics) CollectSystemMetrics() {
+	m.RWMutex.Lock()
+	defer m.RWMutex.Unlock()
+
+	vmStat, err := mem.VirtualMemory()
+	if err == nil {
+		m.Data["TotalMemory"] = float64(vmStat.Total)
+		m.Data["FreeMemory"] = float64(vmStat.Free)
+	} else {
+		m.Data["TotalMemory"] = 0.0
+		m.Data["FreeMemory"] = 0.0
+	}
+
+	cpuPercents, err := cpu.Percent(0, true)
+	if err == nil {
+		for i, p := range cpuPercents {
+			key := fmt.Sprintf("CPUutilization%d", i+1)
+			m.Data[key] = p
+		}
+	}
+}
+
+// GetAll возвращает копию всех собранных метрик.
 func (m *Metrics) GetAll() map[string]interface{} {
-	m.RLock()
-	defer m.RUnlock()
+	m.RWMutex.RLock()
+	defer m.RWMutex.RUnlock()
 
 	localCopy := make(map[string]interface{})
 	for k, v := range m.Data {

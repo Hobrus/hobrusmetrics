@@ -1,95 +1,160 @@
 package repository
 
 import (
+	"strconv"
+	"strings"
 	"sync"
+
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
 )
 
-type Gauge float64
 type Counter int64
 
+// Storage — интерфейс к любому типу хранилища (memory, file-backed, postgres).
+// Реализации должны быть потокобезопасными.
 type Storage interface {
-	UpdateGauge(name string, value Gauge)
+	UpdateGaugeRaw(name, rawValue string) error
+	GetGaugeRaw(name string) (string, bool)
 	UpdateCounter(name string, value Counter)
-	GetGauge(name string) (Gauge, bool)
 	GetCounter(name string) (Counter, bool)
-	GetAllGauges() map[string]Gauge
+	GetAllGauges() map[string]string
 	GetAllCounters() map[string]Counter
+	UpdateMetricsBatch(batch []middleware.MetricsJSON) error
+	Shutdown() error
 }
 
-type Numeric interface {
-	~int64 | ~float64
-}
-
-type MetricStorage[T Numeric] struct {
+// MetricStorage — вспомогательное потокобезопасное хранилище значений int64 по ключу.
+type MetricStorage[T ~int64] struct {
 	mu     sync.RWMutex
 	values map[string]T
 }
 
-func NewMetricStorage[T Numeric]() *MetricStorage[T] {
+// NewMetricStorage создаёт пустое хранилище для значений типа T.
+func NewMetricStorage[T ~int64]() *MetricStorage[T] {
 	return &MetricStorage[T]{
 		values: make(map[string]T),
 	}
 }
 
-func (m *MetricStorage[T]) Update(name string, value T, accumulate bool) {
+// Update добавляет значение к существующему.
+func (m *MetricStorage[T]) Update(name string, value T) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if accumulate {
-		m.values[name] += value
-	} else {
-		m.values[name] = value
-	}
+	// Для counter складываем, т.к. по условию counter накапливается
+	m.values[name] += value
 }
 
+// Get возвращает текущее значение по имени.
 func (m *MetricStorage[T]) Get(name string) (T, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	value, exists := m.values[name]
-	return value, exists
+	val, ok := m.values[name]
+	return val, ok
 }
 
+// GetAll возвращает копию всех значений.
 func (m *MetricStorage[T]) GetAll() map[string]T {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	valuesCopy := make(map[string]T, len(m.values))
+	cpy := make(map[string]T, len(m.values))
 	for k, v := range m.values {
-		valuesCopy[k] = v
+		cpy[k] = v
 	}
-	return valuesCopy
+	return cpy
 }
 
+// MemStorage — в памяти храним:
+// 1) gauges как map[string]string
+// 2) counters (int64) в MetricStorage
 type MemStorage struct {
-	gauges   *MetricStorage[Gauge]
+	gauges   sync.Map // ключ string -> значение string
 	counters *MetricStorage[Counter]
 }
 
+// NewMemStorage создаёт хранилище метрик в оперативной памяти.
 func NewMemStorage() *MemStorage {
 	return &MemStorage{
-		gauges:   NewMetricStorage[Gauge](),
 		counters: NewMetricStorage[Counter](),
 	}
 }
 
-func (m *MemStorage) UpdateGauge(name string, value Gauge) {
-	m.gauges.Update(name, value, false)
+// UpdateGaugeRaw валидирует и сохраняет gauge как строку.
+func (m *MemStorage) UpdateGaugeRaw(name, rawValue string) error {
+	_, err := parseGaugeOrFail(rawValue)
+	if err != nil {
+		return err
+	}
+	m.gauges.Store(name, rawValue)
+	return nil
 }
 
+// GetGaugeRaw возвращает строковое значение gauge и признак наличия.
+func (m *MemStorage) GetGaugeRaw(name string) (string, bool) {
+	v, ok := m.gauges.Load(name)
+	if !ok {
+		return "", false
+	}
+	return v.(string), true
+}
+
+// UpdateCounter накапливает значение counter по ключу.
 func (m *MemStorage) UpdateCounter(name string, value Counter) {
-	m.counters.Update(name, value, true)
+	m.counters.Update(name, value)
 }
 
-func (m *MemStorage) GetGauge(name string) (Gauge, bool) {
-	return m.gauges.Get(name)
-}
-
+// GetCounter возвращает текущее значение counter и признак наличия.
 func (m *MemStorage) GetCounter(name string) (Counter, bool) {
 	return m.counters.Get(name)
 }
 
-func (m *MemStorage) GetAllGauges() map[string]Gauge {
-	return m.gauges.GetAll()
+// GetAllGauges возвращает копию всех gauge.
+func (m *MemStorage) GetAllGauges() map[string]string {
+	result := make(map[string]string)
+	m.gauges.Range(func(key, value any) bool {
+		k := key.(string)
+		v := value.(string)
+		result[k] = v
+		return true
+	})
+	return result
 }
 
+// GetAllCounters возвращает копию всех counter.
 func (m *MemStorage) GetAllCounters() map[string]Counter {
 	return m.counters.GetAll()
+}
+
+// UpdateMetricsBatch применяет пакет обновлений к памяти.
+func (m *MemStorage) UpdateMetricsBatch(batch []middleware.MetricsJSON) error {
+	for _, metric := range batch {
+		mType := strings.ToLower(string(metric.MType))
+		switch mType {
+		case "counter":
+			if metric.Delta != nil {
+				m.UpdateCounter(metric.ID, Counter(*metric.Delta))
+			}
+		case "gauge":
+			if metric.Value != nil {
+				raw := floatToString(*metric.Value)
+				_ = m.UpdateGaugeRaw(metric.ID, raw)
+			}
+		default:
+		}
+	}
+	return nil
+}
+
+// Shutdown для памяти ничего не делает.
+func (m *MemStorage) Shutdown() error {
+	return nil
+}
+
+// parseGaugeOrFail парсит строковое представление gauge в float64.
+func parseGaugeOrFail(raw string) (float64, error) {
+	return strconv.ParseFloat(raw, 64)
+}
+
+// floatToString форматирует число в строку без лишних нулей.
+func floatToString(val float64) string {
+	return strconv.FormatFloat(val, 'f', -1, 64)
 }

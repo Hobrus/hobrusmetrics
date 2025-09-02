@@ -30,3 +30,82 @@ git fetch template && git checkout template/main .github
 При мёрже ветки с инкрементом в основную ветку `main` будут запускаться все автотесты.
 
 Подробнее про локальный и автоматический запуск читайте в [README автотестов](https://github.com/Yandex-Practicum/go-autotests).
+
+## Оптимизации (инкремент 16)
+
+В рамках инкремента 16 была выполнена серия точечных оптимизаций в сервере метрик.
+
+- **JSON-парсинг (`internal/app/server/middleware/json.go`)**: заменён ручной `io.ReadAll` + `json.Unmarshal` на потоковый `json.NewDecoder().Decode`. Это убирает лишнее копирование тела запроса и снижает количество аллокаций на каждом запросе.
+
+- **Gzip middleware (`internal/app/server/middleware/gzip.go`)**:
+  - Добавлен `sync.Pool` для переиспользования `gzip.Writer` между запросами. Это уменьшает давление на GC и количество аллокаций при сжатии ответов.
+  - Поддержана распаковка входящих запросов с `Content-Encoding: gzip` (прозрачная декомпрессия тела до хендлеров).
+  - Совместимость по типам контента определяется через небольшой список сжимаемых MIME-типов; для остальных сжатие не включается.
+  - Поведение пула можно отключить переменной окружения `GZIP_POOL=0` (или `false`). По умолчанию пул включён.
+
+- **Кэширование HTML-шаблонов (`internal/app/server/handlers/handlers.go`)**: компиляция шаблона теперь выполняется один раз (`sync.Once`) и переиспользуется, вместо парсинга на каждый рендер.
+
+- **Профилирование (pprof) (`cmd/server/main.go`)**: включён `net/http/pprof` и поднят вспомогательный сервер профилирования на `localhost:6060`. Это помогает быстро находить «узкие места» под нагрузкой.
+
+Как проверить и воспроизвести:
+
+- **Бенчмарки** (локально):
+
+```bash
+go test -run=^$ -bench=. -benchmem ./internal/app/server/middleware
+go test -run=^$ -bench=. -benchmem ./internal/app/server/repository
+go test -run=^$ -bench=. -benchmem ./internal/app/server/service
+```
+
+- **Профилирование CPU/heap**:
+
+```bash
+# Снять 10-секундный CPU-профиль и открыть web-интерфейс pprof
+go tool pprof -http=:8080 http://localhost:6060/debug/pprof/profile?seconds=10
+
+# Снимок heap
+go tool pprof -http=:8080 http://localhost:6060/debug/pprof/heap
+```
+
+Итог: оптимизации применены и дают снижение аллокаций и накладных расходов на обработку JSON и сжатие ответов, а также уменьшают латентность рендеринга HTML-страницы метрик за счёт кэширования шаблона. Встроенный pprof позволяет оперативно подтверждать эффект и искать дальнейшие точки для улучшений.
+
+## Покрытие тестами
+
+Ниже — быстрые команды для получения суммарного покрытия по всему модулю без сохранения артефактов в репозиторий.
+
+- Быстрый просмотр по пакетам:
+
+```bash
+go test ./... -cover
+```
+
+- Полное покрытие по всем пакетам с учётом перекрёстного покрытия и сохранением профиля:
+
+```bash
+go test -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
+```
+
+- Вывести строку с суммарным покрытием (последняя строка `total:`):
+  - macOS/Linux:
+
+```bash
+go tool cover -func=coverage.out | tail -n 1
+```
+
+  - Windows PowerShell:
+
+```powershell
+go tool cover -func=coverage.out | Select-String -Pattern 'total:'
+```
+
+- Сгенерировать HTML-отчёт (локально открыть в браузере):
+
+```bash
+go tool cover -html=coverage.out -o cover.html
+```
+
+Текстовые файлы с суммарным покрытием (например, `coverage_all.txt`, `coverage.txt`) не должны попадать в репозиторий — они уже добавлены в `.gitignore`. При необходимости можно сохранять локально, например:
+
+```powershell
+go tool cover -func=coverage.out | Select-String -Pattern 'total:' | Out-File -Encoding utf8 coverage_all.txt
+```
