@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -121,55 +120,59 @@ func main() {
 		Handler: router,
 	}
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	// Канал ошибок сервера
+	serverErr := make(chan error, 1)
 
+	// Запускаем сервер в отдельной горутине
 	go func() {
-		<-sigChan
-		logger.Info("Shutting down server...")
+		logger.Infof("Server is running on %s", cfg.ServerAddress)
+		if cfg.EnableHTTPS {
+			certFile := os.Getenv("TLS_CERT_FILE")
+			keyFile := os.Getenv("TLS_KEY_FILE")
+			if certFile == "" || keyFile == "" {
+				if _, err := os.Stat("server.crt"); err == nil {
+					certFile = "server.crt"
+				}
+				if _, err := os.Stat("server.key"); err == nil {
+					keyFile = "server.key"
+				}
+			}
+			if certFile == "" || keyFile == "" {
+				logger.Warn("ENABLE_HTTPS is set but TLS_CERT_FILE/TLS_KEY_FILE not provided; falling back to http")
+				serverErr <- srv.ListenAndServe()
+				return
+			}
+			logger.Infof("Starting HTTPS with cert=%s key=%s", filepath.Base(certFile), filepath.Base(keyFile))
+			serverErr <- srv.ListenAndServeTLS(certFile, keyFile)
+			return
+		}
+		serverErr <- srv.ListenAndServe()
+	}()
 
+	// Ожидаем сигнал завершения или ошибку сервера
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, shutdownSignals()...)
+
+	select {
+	case sig := <-sigChan:
+		logger.Infof("Shutting down server (signal: %v)...", sig)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-
 		if err := srv.Shutdown(ctx); err != nil {
 			logger.Errorf("Server shutdown error: %v", err)
 		}
-
 		if err := storage.Shutdown(); err != nil {
 			logger.Errorf("Failed to save metrics during shutdown: %v", err)
 		}
-
 		if dbConn != nil {
 			dbConn.Close()
 		}
-	}()
-
-	logger.Infof("Server is running on %s", cfg.ServerAddress)
-	if cfg.EnableHTTPS {
-		certFile := os.Getenv("TLS_CERT_FILE")
-		keyFile := os.Getenv("TLS_KEY_FILE")
-		if certFile == "" || keyFile == "" {
-			if _, err := os.Stat("server.crt"); err == nil {
-				certFile = "server.crt"
-			}
-			if _, err := os.Stat("server.key"); err == nil {
-				keyFile = "server.key"
-			}
+		if err := <-serverErr; err != nil && err != http.ErrServerClosed {
+			logger.Errorf("Server closed with error: %v", err)
 		}
-		if certFile == "" || keyFile == "" {
-			logger.Warn("ENABLE_HTTPS is set but TLS_CERT_FILE/TLS_KEY_FILE not provided; falling back to http")
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				logger.Fatalf("Failed to start server: %v", err)
-			}
-			return
-		}
-		logger.Infof("Starting HTTPS with cert=%s key=%s", filepath.Base(certFile), filepath.Base(keyFile))
-		if err := srv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
-			logger.Fatalf("Failed to start HTTPS server: %v", err)
-		}
-	} else {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatalf("Failed to start server: %v", err)
+	case err := <-serverErr:
+		if err != nil && err != http.ErrServerClosed {
+			logger.Fatalf("Server error: %v", err)
 		}
 	}
 }
