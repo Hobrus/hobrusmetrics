@@ -7,4 +7,6 @@ func TestNewConfig_Defaults(t *testing.T) {
 	if cfg.ServerAddress == "" {
 		t.Fatalf("ServerAddress must not be empty")
 	}
+	_ = cfg.EnableHTTPS
+	_ = cfg.CryptoKeyPath
 }

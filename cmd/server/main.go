@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"syscall"
+	"path/filepath"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -84,8 +84,7 @@ func main() {
 		}
 	}()
 
-	// Изменили порядок middleware: сначала Recovery, Logging и (при наличии ключа) хэширование,
-	// затем GzipMiddleware – чтобы подпись вычислялась от распакованного тела.
+	// Порядок: Recovery, Logging, проверка подписи (если есть ключ), расшифровка (если есть приватный ключ), затем gzip.
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(middleware.LoggingMiddleware(logger))
@@ -93,6 +92,9 @@ func main() {
 		router.Use(middleware.HashRequestMiddleware(cfg.Key))
 		router.Use(middleware.HashResponseMiddleware(cfg.Key))
 	}
+	// Расшифровка после проверки подписи и до gzip-распаковки уже не требуется,
+	// так как HashRequestMiddleware сам распаковывает тело для последующих обработчиков.
+	router.Use(middleware.DecryptRequestMiddleware(cfg.CryptoKeyPath))
 	router.Use(middleware.GzipMiddleware())
 
 	handler.SetupRoutes(router)
@@ -118,31 +120,59 @@ func main() {
 		Handler: router,
 	}
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	// Канал ошибок сервера
+	serverErr := make(chan error, 1)
 
+	// Запускаем сервер в отдельной горутине
 	go func() {
-		<-sigChan
-		logger.Info("Shutting down server...")
+		logger.Infof("Server is running on %s", cfg.ServerAddress)
+		if cfg.EnableHTTPS {
+			certFile := os.Getenv("TLS_CERT_FILE")
+			keyFile := os.Getenv("TLS_KEY_FILE")
+			if certFile == "" || keyFile == "" {
+				if _, err := os.Stat("server.crt"); err == nil {
+					certFile = "server.crt"
+				}
+				if _, err := os.Stat("server.key"); err == nil {
+					keyFile = "server.key"
+				}
+			}
+			if certFile == "" || keyFile == "" {
+				logger.Warn("ENABLE_HTTPS is set but TLS_CERT_FILE/TLS_KEY_FILE not provided; falling back to http")
+				serverErr <- srv.ListenAndServe()
+				return
+			}
+			logger.Infof("Starting HTTPS with cert=%s key=%s", filepath.Base(certFile), filepath.Base(keyFile))
+			serverErr <- srv.ListenAndServeTLS(certFile, keyFile)
+			return
+		}
+		serverErr <- srv.ListenAndServe()
+	}()
 
+	// Ожидаем сигнал завершения или ошибку сервера
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, shutdownSignals()...)
+
+	select {
+	case sig := <-sigChan:
+		logger.Infof("Shutting down server (signal: %v)...", sig)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-
 		if err := srv.Shutdown(ctx); err != nil {
 			logger.Errorf("Server shutdown error: %v", err)
 		}
-
 		if err := storage.Shutdown(); err != nil {
 			logger.Errorf("Failed to save metrics during shutdown: %v", err)
 		}
-
 		if dbConn != nil {
 			dbConn.Close()
 		}
-	}()
-
-	logger.Infof("Server is running on %s", cfg.ServerAddress)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Fatalf("Failed to start server: %v", err)
+		if err := <-serverErr; err != nil && err != http.ErrServerClosed {
+			logger.Errorf("Server closed with error: %v", err)
+		}
+	case err := <-serverErr:
+		if err != nil && err != http.ErrServerClosed {
+			logger.Fatalf("Server error: %v", err)
+		}
 	}
 }
