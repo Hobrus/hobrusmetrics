@@ -4,10 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/repository"
 )
 
+// Допустимые типы метрик в сервисном слое.
 const (
 	GaugeMetric   = "gauge"
 	CounterMetric = "counter"
@@ -17,56 +20,123 @@ type MetricsService struct {
 	Storage repository.Storage
 }
 
+// MetricsService реализует бизнес-логику обновления и чтения метрик.
+// UpdateMetric обрабатывает обновление одной метрики по типу и имени.
+// Для counter значения накапливаются, для gauge значение перезаписывается.
 func (ms *MetricsService) UpdateMetric(metricType, metricName, metricValue string) error {
 	if metricName == "" {
 		return errors.New("metric name is required")
 	}
+	mt := strings.ToLower(metricType)
 
-	switch metricType {
+	switch mt {
 	case GaugeMetric:
-		value, err := strconv.ParseFloat(metricValue, 64)
-		if err != nil {
+		// Проверим, что metricValue действительно float
+		if _, err := strconv.ParseFloat(metricValue, 64); err != nil {
 			return fmt.Errorf("invalid gauge value: %w", err)
 		}
-		ms.Storage.UpdateGauge(metricName, repository.Gauge(value))
+		// Сохраняем как «сырую» строку (но позже будем возвращать в каноническом формате)
+		return ms.Storage.UpdateGaugeRaw(metricName, metricValue)
+
 	case CounterMetric:
-		value, err := strconv.ParseInt(metricValue, 10, 64)
+		val, err := strconv.ParseInt(metricValue, 10, 64)
 		if err != nil {
 			return fmt.Errorf("invalid counter value: %w", err)
 		}
-		ms.Storage.UpdateCounter(metricName, repository.Counter(value))
+		ms.Storage.UpdateCounter(metricName, repository.Counter(val))
+		return nil
+
 	default:
 		return errors.New("unsupported metric type")
 	}
-	return nil
 }
 
+// UpdateMetricsBatch обрабатывает пакетное обновление метрик.
+// Возвращает уже «актуальные» значения метрик после обновления.
+func (ms *MetricsService) UpdateMetricsBatch(batch []middleware.MetricsJSON) ([]middleware.MetricsJSON, error) {
+	if err := ms.Storage.UpdateMetricsBatch(batch); err != nil {
+		return nil, err
+	}
+
+	// Формируем ответ с актуальными значениями.
+	var result []middleware.MetricsJSON
+	for _, m := range batch {
+		mt := strings.ToLower(string(m.MType))
+		switch mt {
+		case CounterMetric:
+			val, ok := ms.Storage.GetCounter(m.ID)
+			if ok {
+				delta := int64(val)
+				result = append(result, middleware.MetricsJSON{
+					ID:    m.ID,
+					MType: m.MType,
+					Delta: &delta,
+				})
+			}
+		case GaugeMetric:
+			raw, ok := ms.Storage.GetGaugeRaw(m.ID)
+			if ok {
+				fv, _ := strconv.ParseFloat(raw, 64) // не ожидается ошибка, т.к. ранее проверяли
+				result = append(result, middleware.MetricsJSON{
+					ID:    m.ID,
+					MType: m.MType,
+					Value: &fv,
+				})
+			}
+		}
+	}
+	return result, nil
+}
+
+// GetMetricValue возвращает текущее значение одной метрики (в виде строки).
+// Для gauge мы теперь приводим число к каноническому формату через %g, чтобы убрать лишние ".0".
 func (ms *MetricsService) GetMetricValue(metricType, metricName string) (string, error) {
-	switch metricType {
+	mt := strings.ToLower(metricType)
+
+	switch mt {
 	case GaugeMetric:
-		if value, ok := ms.Storage.GetGauge(metricName); ok {
-			return strconv.FormatFloat(float64(value), 'f', -1, 64), nil
+		raw, ok := ms.Storage.GetGaugeRaw(metricName)
+		if !ok {
+			return "", errors.New("metric not found")
 		}
+		val, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return "", fmt.Errorf("invalid stored gauge value: %w", err)
+		}
+		// Используем %g, чтобы "42.0" форматировать как "42".
+		return fmt.Sprintf("%g", val), nil
+
 	case CounterMetric:
-		if value, ok := ms.Storage.GetCounter(metricName); ok {
-			return strconv.FormatInt(int64(value), 10), nil
+		value, ok := ms.Storage.GetCounter(metricName)
+		if !ok {
+			return "", errors.New("metric not found")
 		}
+		return strconv.FormatInt(int64(value), 10), nil
+
 	default:
 		return "", errors.New("unsupported metric type")
 	}
-	return "", errors.New("metric not found")
 }
 
+// GetAllMetrics возвращает все метрики в виде "имя -> строковое представление".
+// Для gauge аналогично используем канонический формат через %g, чтобы убрать ненужные ".0".
 func (ms *MetricsService) GetAllMetrics() map[string]string {
-	metrics := make(map[string]string)
+	result := make(map[string]string)
 
-	for name, value := range ms.Storage.GetAllGauges() {
-		metrics[name] = strconv.FormatFloat(float64(value), 'f', -1, 64)
+	// Обрабатываем gauges
+	for name, raw := range ms.Storage.GetAllGauges() {
+		if val, err := strconv.ParseFloat(raw, 64); err == nil {
+			result[name] = fmt.Sprintf("%g", val)
+		} else {
+			// Если вдруг парсинг не удался, вернём как есть — но в норме такое не должно происходить
+			result[name] = raw
+		}
 	}
 
-	for name, value := range ms.Storage.GetAllCounters() {
-		metrics[name] = fmt.Sprintf("%d", value)
+	// Обрабатываем counters
+	for name, c := range ms.Storage.GetAllCounters() {
+		result[name] = strconv.FormatInt(int64(c), 10)
 	}
 
-	return metrics
+	return result
 }

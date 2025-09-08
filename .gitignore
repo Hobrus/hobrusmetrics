@@ -1,3 +1,81 @@
+# ---------- Go build artifacts ----------
+bin/
+build/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.cover
+*.coverprofile
+coverage/
+coverage
+coverage.out
+cover.out
+cover.html
+profile.out
+coverage.txt
+coverage_all.txt
+coverage_func.txt
+
+# ---------- Python / Virtualenv ----------
+venv/
+.venv/
+env/
+.env/
+ENV/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.hypothesis/
+
+# ---------- Logs / temp ----------
+*.log
+logs/
+log/
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig
+
+# ---------- Secrets / environment ----------
+.env
+.env.*
+.env.local
+.envrc
+
+# ---------- IDE / Editor ----------
+.idea/
+.vscode/
+.fleet/
+*.iml
+*.ipr
+*.iws
+.vs/
+
+# ---------- OS files ----------
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ---------- Misc ----------
+node_modules/
+*.lock
 # Binaries for programs and plugins
 *.exe
 *.exe~

@@ -2,58 +2,202 @@ package sender
 
 import (
 	"bytes"
+	"compress/gzip"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
-	"strconv"
+
+	"github.com/Hobrus/hobrusmetrics.git/internal/pkg/retry"
 )
 
+// Metrics описывает метрику для передачи от агента на сервер.
+type Metrics struct {
+	ID    string   `json:"id"`   // metric name
+	MType string   `json:"type"` // "counter" или "gauge"
+	Delta *int64   `json:"delta,omitempty"`
+	Value *float64 `json:"value,omitempty"`
+}
+
+// Sender отвечает за отправку метрик на сервер с учётом gzip и HMAC-подписи.
 type Sender struct {
 	ServerAddress string
 	Client        *http.Client
+	// Поле ключа для подписи.
+	Key string
 }
 
-func NewSender(serverAddress string) *Sender {
+// NewSender создаёт новый экземпляр отправителя.
+func NewSender(serverAddress, key string) *Sender {
 	return &Sender{
 		ServerAddress: serverAddress,
 		Client:        &http.Client{},
+		Key:           key,
 	}
 }
 
+// computeHMAC вычисляет HMAC‑SHA256 от data с использованием key и возвращает base64 строку.
+func computeHMAC(data []byte, key string) string {
+	h := hmac.New(sha256.New, []byte(key))
+	h.Write(data)
+	return base64.StdEncoding.EncodeToString(h.Sum(nil))
+}
+
+func compressData(data []byte) (*bytes.Buffer, error) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(data); err != nil {
+		return nil, fmt.Errorf("failed to write to gzip: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close gzip: %w", err)
+	}
+	return &buf, nil
+}
+
+// sendRequestWithRetry выполняет HTTP-запрос с повторными попытками.
+// Теперь тело запроса считывается один раз и восстанавливается для каждой попытки.
+func (s *Sender) sendRequestWithRetry(req *http.Request) (*http.Response, error) {
+	var resp *http.Response
+
+	// Считываем тело запроса для последующих попыток.
+	bodyBytes, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	err = retry.DoWithRetry(func() error {
+		// Восстанавливаем тело запроса для каждой попытки.
+		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		r, doErr := s.Client.Do(req)
+		if doErr != nil {
+			return doErr
+		}
+		if r.StatusCode >= 500 {
+			r.Body.Close()
+			return fmt.Errorf("server responded with %d", r.StatusCode)
+		}
+		resp = r
+		return nil
+	})
+
+	return resp, err
+}
+
+// Send отправляет единичные метрики по одному в эндпоинт /update/.
 func (s *Sender) Send(metrics map[string]interface{}) {
-	for name, value := range metrics {
-		var metricType string
-		var valueStr string
-
-		switch v := value.(type) {
+	for name, val := range metrics {
+		var m Metrics
+		switch v := val.(type) {
 		case int64:
-			metricType = "counter"
-			valueStr = strconv.FormatInt(v, 10)
+			d := v
+			m = Metrics{ID: name, MType: "counter", Delta: &d}
 		case float64:
-			metricType = "gauge"
-			valueStr = strconv.FormatFloat(v, 'f', -1, 64)
+			f := v
+			m = Metrics{ID: name, MType: "gauge", Value: &f}
 		default:
-			log.Printf("Unsupported metric type for %s: %T\n", name, value)
 			continue
 		}
 
-		url := fmt.Sprintf("http://%s/update/%s/%s/%s", s.ServerAddress, metricType, name, valueStr)
-		req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer([]byte{}))
+		data, err := json.Marshal(m)
 		if err != nil {
-			log.Printf("Failed to create request: %v\n", err)
+			log.Printf("marshal error: %v\n", err)
 			continue
 		}
-		req.Header.Set("Content-Type", "text/plain")
+		// Если ключ задан – вычисляем хеш от исходных JSON-данных.
+		var hashHeader string
+		if s.Key != "" {
+			hashHeader = computeHMAC(data, s.Key)
+		}
 
-		resp, err := s.Client.Do(req)
+		compressed, err := compressData(data)
 		if err != nil {
-			log.Printf("Failed to send metric %s: %v\n", name, err)
+			log.Printf("compress error: %v\n", err)
 			continue
 		}
-		err = resp.Body.Close()
+
+		url := fmt.Sprintf("http://%s/update/", s.ServerAddress)
+		req, err := http.NewRequest(http.MethodPost, url, compressed)
 		if err != nil {
-			log.Printf("Failed to close response body: %v\n", err)
+			log.Printf("request error: %v\n", err)
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Encoding", "gzip")
+		req.Header.Set("Accept-Encoding", "gzip")
+		if hashHeader != "" {
+			req.Header.Set("HashSHA256", hashHeader)
+		}
+
+		resp, err := s.sendRequestWithRetry(req)
+		if err != nil {
+			log.Printf("send error after retries: %v\n", err)
+			continue
+		}
+		resp.Body.Close()
+	}
+}
+
+// SendBatch отправляет набор метрик одним запросом в эндпоинт /updates/.
+func (s *Sender) SendBatch(metrics map[string]interface{}) {
+	if len(metrics) == 0 {
+		return
+	}
+
+	batch := make([]Metrics, 0, len(metrics))
+	for name, val := range metrics {
+		switch v := val.(type) {
+		case int64:
+			d := v
+			batch = append(batch, Metrics{ID: name, MType: "counter", Delta: &d})
+		case float64:
+			f := v
+			batch = append(batch, Metrics{ID: name, MType: "gauge", Value: &f})
+		default:
 			continue
 		}
 	}
+	if len(batch) == 0 {
+		return
+	}
+
+	data, err := json.Marshal(batch)
+	if err != nil {
+		log.Printf("marshal batch error: %v\n", err)
+		return
+	}
+	var hashHeader string
+	if s.Key != "" {
+		hashHeader = computeHMAC(data, s.Key)
+	}
+
+	compressed, err := compressData(data)
+	if err != nil {
+		log.Printf("compress batch error: %v\n", err)
+		return
+	}
+
+	url := fmt.Sprintf("http://%s/updates/", s.ServerAddress)
+	req, err := http.NewRequest(http.MethodPost, url, compressed)
+	if err != nil {
+		log.Printf("batch request error: %v\n", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Accept-Encoding", "gzip")
+	if hashHeader != "" {
+		req.Header.Set("HashSHA256", hashHeader)
+	}
+
+	resp, err := s.sendRequestWithRetry(req)
+	if err != nil {
+		log.Printf("batch send error after retries: %v\n", err)
+		return
+	}
+	resp.Body.Close()
 }
