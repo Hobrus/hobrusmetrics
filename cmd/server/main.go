@@ -46,8 +46,6 @@ func main() {
 		pStorage, err := repository.NewPostgresStorage(dbConn)
 		if err != nil {
 			logger.Warnf("Failed to create PostgresStorage, fallback to file or memory: %v", err)
-			dbConn.Close()
-			dbConn = nil
 		} else {
 			storage = pStorage
 		}
