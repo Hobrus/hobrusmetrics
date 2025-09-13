@@ -99,7 +99,8 @@ func main() {
 
 	router.GET("/ping", func(c *gin.Context) {
 		if dbConn == nil {
-			c.String(http.StatusInternalServerError, "database not configured")
+			logger.Error("database not configured")
+			c.String(http.StatusInternalServerError, http.StatusText(http.StatusInternalServerError))
 			return
 		}
 
@@ -107,10 +108,11 @@ func main() {
 		defer cancel()
 
 		if err := dbConn.Ping(ctx); err != nil {
-			c.String(http.StatusInternalServerError, "database ping error: %v", err)
+			logger.Errorf("database ping error: %v", err)
+			c.String(http.StatusInternalServerError, http.StatusText(http.StatusInternalServerError))
 			return
 		}
-		c.String(http.StatusOK, "OK")
+		c.String(http.StatusOK, http.StatusText(http.StatusOK))
 	})
 
 	srv := &http.Server{
