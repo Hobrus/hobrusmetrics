@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log"
-	"os"
 	"os/signal"
 
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/agent"
@@ -16,16 +15,8 @@ func main() {
 	myAgent := agent.NewAgent()
 	log.Println("Agent is starting...")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, shutdownSignals()...)
-	go func() {
-		sig := <-sigChan
-		log.Printf("Received signal: %v. Shutting down agent...", sig)
-		cancel()
-	}()
+	ctx, stop := signal.NotifyContext(context.Background(), shutdownSignals()...)
+	defer stop()
 
 	myAgent.Run(ctx)
 	log.Println("Agent stopped gracefully")
