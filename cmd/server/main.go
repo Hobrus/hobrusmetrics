@@ -172,6 +172,9 @@ func main() {
 		}
 	case err := <-serverErr:
 		if err != nil && err != http.ErrServerClosed {
+			if dbConn != nil {
+				dbConn.Close()
+			}
 			logger.Fatalf("Server error: %v", err)
 		}
 	}
