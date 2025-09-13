@@ -31,6 +31,22 @@ git fetch template && git checkout template/main .github
 
 Подробнее про локальный и автоматический запуск читайте в [README автотестов](https://github.com/Yandex-Practicum/go-autotests).
 
+## CI с Go 1.23 и goimports
+
+Если в пайплайне используется Go 1.23, последние версии `goimports` (в составе `golang.org/x/tools`) могут требовать Go ≥ 1.24. Зафиксируйте версию `goimports`, совместимую с 1.23, например `v0.30.0`:
+
+```yaml
+- uses: actions/setup-go@v5
+  with:
+    go-version: '1.23.x'
+- name: Install goimports compatible with Go 1.23
+  env:
+    GOTOOLCHAIN: auto
+  run: go install golang.org/x/tools/cmd/goimports@v0.30.0
+```
+
+Альтернатива: обновить раннер до Go 1.24.x и продолжить использовать `@latest`.
+
 ## Оптимизации (инкремент 16)
 
 В рамках инкремента 16 была выполнена серия точечных оптимизаций в сервере метрик.
