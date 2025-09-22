@@ -21,6 +21,16 @@ type Config struct {
 	EnableHTTPS bool
 	// Путь до файла с публичным ключом RSA
 	CryptoKeyPath string
+
+	// ========== gRPC ==========
+	// Использовать gRPC вместо HTTP
+	UseGRPC bool
+	// Адрес gRPC сервера
+	GRPCAddress string
+	// Включить TLS для gRPC клиента
+	EnableGRPCTLS bool
+	// Путь к файлу CA или серверного сертификата для проверки
+	GRPCCAFile string
 }
 
 // agentJSONConfig описывает формат JSON-конфига для агента.
@@ -34,6 +44,11 @@ type agentJSONConfig struct {
 	Key         *string `json:"key"`
 	RateLimit   *int    `json:"rate_limit"`
 	EnableHTTPS *bool   `json:"enable_https"`
+	// gRPC
+	UseGRPC       *bool   `json:"use_grpc"`
+	GRPCAddress   *string `json:"grpc_address"`
+	EnableGRPCTLS *bool   `json:"grpc_enable_tls"`
+	GRPCCAFile    *string `json:"grpc_ca_file"`
 }
 
 func findConfigPathFromArgs() string {
@@ -84,6 +99,18 @@ func applyJSONToConfig(cfg *Config, jc agentJSONConfig) {
 	if jc.EnableHTTPS != nil {
 		cfg.EnableHTTPS = *jc.EnableHTTPS
 	}
+	if jc.UseGRPC != nil {
+		cfg.UseGRPC = *jc.UseGRPC
+	}
+	if jc.GRPCAddress != nil && *jc.GRPCAddress != "" {
+		cfg.GRPCAddress = *jc.GRPCAddress
+	}
+	if jc.EnableGRPCTLS != nil {
+		cfg.EnableGRPCTLS = *jc.EnableGRPCTLS
+	}
+	if jc.GRPCCAFile != nil {
+		cfg.GRPCCAFile = *jc.GRPCCAFile
+	}
 }
 
 // NewConfig читает флаги и переменные окружения и возвращает конфигурацию агента.
@@ -96,6 +123,10 @@ func NewConfig() *Config {
 		RateLimit:      5, // значение по умолчанию (можно изменить)
 		EnableHTTPS:    false,
 		CryptoKeyPath:  "",
+		UseGRPC:        false,
+		GRPCAddress:    "localhost:9090",
+		EnableGRPCTLS:  false,
+		GRPCCAFile:     "",
 	}
 
 	// 1) Ищем путь к JSON-конфигу в аргументах или окружении
@@ -126,6 +157,11 @@ func NewConfig() *Config {
 	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "Maximum number of concurrent outgoing requests (rate limit)")
 	flag.BoolVar(&cfg.EnableHTTPS, "s", cfg.EnableHTTPS, "Use HTTPS to connect to server")
 	flag.StringVar(&cfg.CryptoKeyPath, "crypto-key", cfg.CryptoKeyPath, "Path to RSA public key (PEM)")
+	// gRPC флаги
+	flag.BoolVar(&cfg.UseGRPC, "use-grpc", cfg.UseGRPC, "Use gRPC instead of HTTP")
+	flag.StringVar(&cfg.GRPCAddress, "grpc-address", cfg.GRPCAddress, "gRPC server address")
+	flag.BoolVar(&cfg.EnableGRPCTLS, "grpc-enable-tls", cfg.EnableGRPCTLS, "Enable TLS for gRPC client")
+	flag.StringVar(&cfg.GRPCCAFile, "grpc-ca-file", cfg.GRPCCAFile, "Path to CA cert for gRPC TLS")
 	flag.Parse()
 
 	if envAddress := os.Getenv("ADDRESS"); envAddress != "" {
@@ -160,6 +196,23 @@ func NewConfig() *Config {
 	}
 	if envCryptoKey := os.Getenv("CRYPTO_KEY"); envCryptoKey != "" {
 		cfg.CryptoKeyPath = envCryptoKey
+	}
+	// gRPC окружение
+	if ev := os.Getenv("USE_GRPC"); ev != "" {
+		if v, err := strconv.ParseBool(ev); err == nil {
+			cfg.UseGRPC = v
+		}
+	}
+	if ev := os.Getenv("GRPC_ADDRESS"); ev != "" {
+		cfg.GRPCAddress = ev
+	}
+	if ev := os.Getenv("GRPC_ENABLE_TLS"); ev != "" {
+		if v, err := strconv.ParseBool(ev); err == nil {
+			cfg.EnableGRPCTLS = v
+		}
+	}
+	if ev := os.Getenv("GRPC_CA_FILE"); ev != "" {
+		cfg.GRPCCAFile = ev
 	}
 	// Игнорируем позиционные аргументы: библиотечный код не должен завершать процесс.
 

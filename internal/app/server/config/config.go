@@ -24,6 +24,17 @@ type Config struct {
 	CryptoKeyPath string
 	// Доверенная подсеть в формате CIDR; пусто — проверка отключена
 	TrustedSubnet string
+
+	// ========== gRPC ==========
+	// Включение gRPC-сервера
+	EnableGRPC bool
+	// Адрес gRPC-сервера (host:port)
+	GRPCAddress string
+	// Включить TLS для gRPC
+	EnableGRPCTLS bool
+	// Пути к серверным сертификату и ключу для gRPC TLS
+	GRPCCertFile string
+	GRPCKeyFile  string
 }
 
 // serverJSONConfig описывает формат JSON-конфига для сервера.
@@ -39,6 +50,13 @@ type serverJSONConfig struct {
 	Key           *string `json:"key"`
 	EnableHTTPS   *bool   `json:"enable_https"`
 	TrustedSubnet *string `json:"trusted_subnet"`
+
+	// gRPC
+	EnableGRPC    *bool   `json:"enable_grpc"`
+	GRPCAddress   *string `json:"grpc_address"`
+	EnableGRPCTLS *bool   `json:"grpc_enable_tls"`
+	GRPCCertFile  *string `json:"grpc_cert_file"`
+	GRPCKeyFile   *string `json:"grpc_key_file"`
 }
 
 // findConfigPathFromArgs ищет путь к JSON-файлу конфигурации в аргументах командной строки (-c, -config)
@@ -91,6 +109,22 @@ func applyJSONToConfig(cfg *Config, jc serverJSONConfig) {
 	if jc.TrustedSubnet != nil {
 		cfg.TrustedSubnet = *jc.TrustedSubnet
 	}
+	// gRPC
+	if jc.EnableGRPC != nil {
+		cfg.EnableGRPC = *jc.EnableGRPC
+	}
+	if jc.GRPCAddress != nil && *jc.GRPCAddress != "" {
+		cfg.GRPCAddress = *jc.GRPCAddress
+	}
+	if jc.EnableGRPCTLS != nil {
+		cfg.EnableGRPCTLS = *jc.EnableGRPCTLS
+	}
+	if jc.GRPCCertFile != nil {
+		cfg.GRPCCertFile = *jc.GRPCCertFile
+	}
+	if jc.GRPCKeyFile != nil {
+		cfg.GRPCKeyFile = *jc.GRPCKeyFile
+	}
 	if jc.StoreInterval != nil && *jc.StoreInterval != "" {
 		if d, err := time.ParseDuration(*jc.StoreInterval); err == nil {
 			cfg.StoreInterval = d
@@ -110,6 +144,11 @@ func NewConfig() *Config {
 		EnableHTTPS:     false,
 		CryptoKeyPath:   "",
 		TrustedSubnet:   "",
+		EnableGRPC:      false,
+		GRPCAddress:     "localhost:9090",
+		EnableGRPCTLS:   false,
+		GRPCCertFile:    "",
+		GRPCKeyFile:     "",
 	}
 
 	// 1) Предварительно ищем путь к JSON-конфигу в аргументах или окружении
@@ -146,6 +185,12 @@ func NewConfig() *Config {
 	flag.StringVar(&cfg.CryptoKeyPath, "crypto-key", cfg.CryptoKeyPath, "Path to RSA private key (PEM)")
 	// Флаг доверенной подсети в формате CIDR
 	flag.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "Trusted subnet in CIDR (e.g. 192.168.1.0/24)")
+	// gRPC флаги
+	flag.BoolVar(&cfg.EnableGRPC, "enable-grpc", cfg.EnableGRPC, "Enable gRPC server")
+	flag.StringVar(&cfg.GRPCAddress, "grpc-address", cfg.GRPCAddress, "gRPC server address")
+	flag.BoolVar(&cfg.EnableGRPCTLS, "grpc-enable-tls", cfg.EnableGRPCTLS, "Enable TLS for gRPC")
+	flag.StringVar(&cfg.GRPCCertFile, "grpc-cert-file", cfg.GRPCCertFile, "Path to gRPC TLS certificate file")
+	flag.StringVar(&cfg.GRPCKeyFile, "grpc-key-file", cfg.GRPCKeyFile, "Path to gRPC TLS private key file")
 	flag.Parse()
 
 	if envAddress := os.Getenv("ADDRESS"); envAddress != "" {
@@ -189,6 +234,27 @@ func NewConfig() *Config {
 
 	if envTrusted := os.Getenv("TRUSTED_SUBNET"); envTrusted != "" {
 		cfg.TrustedSubnet = envTrusted
+	}
+
+	// gRPC из окружения
+	if ev := os.Getenv("ENABLE_GRPC"); ev != "" {
+		if v, err := strconv.ParseBool(ev); err == nil {
+			cfg.EnableGRPC = v
+		}
+	}
+	if ev := os.Getenv("GRPC_ADDRESS"); ev != "" {
+		cfg.GRPCAddress = ev
+	}
+	if ev := os.Getenv("GRPC_ENABLE_TLS"); ev != "" {
+		if v, err := strconv.ParseBool(ev); err == nil {
+			cfg.EnableGRPCTLS = v
+		}
+	}
+	if ev := os.Getenv("GRPC_CERT_FILE"); ev != "" {
+		cfg.GRPCCertFile = ev
+	}
+	if ev := os.Getenv("GRPC_KEY_FILE"); ev != "" {
+		cfg.GRPCKeyFile = ev
 	}
 
 	return cfg

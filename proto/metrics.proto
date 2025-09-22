@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package metrics;
+
+option go_package = "github.com/Hobrus/hobrusmetrics.git/internal/app/grpcapi;grpcapi";
+
+enum MetricType {
+  METRIC_TYPE_UNSPECIFIED = 0;
+  GAUGE = 1;
+  COUNTER = 2;
+}
+
+message Metric {
+  string id = 1;
+  MetricType type = 2;
+  oneof metric_value {
+    int64 delta = 3;   // for counter
+    double value = 4;  // for gauge
+  }
+}
+
+message UpdateMetricRequest {
+  Metric metric = 1;
+}
+
+message UpdateMetricResponse {
+  Metric metric = 1; // updated value
+}
+
+message BatchUpdateRequest {
+  repeated Metric metrics = 1;
+}
+
+message BatchUpdateResponse {
+  repeated Metric metrics = 1; // updated values
+}
+
+message GetValueRequest {
+  string id = 1;
+  MetricType type = 2;
+}
+
+message GetValueResponse {
+  Metric metric = 1;
+}
+
+message GetAllMetricsRequest {}
+
+message GetAllMetricsResponse {
+  map<string, string> gauges = 1;
+  map<string, int64> counters = 2;
+}
+
+service MetricsService {
+  rpc UpdateMetric(UpdateMetricRequest) returns (UpdateMetricResponse);
+  rpc BatchUpdate(BatchUpdateRequest) returns (BatchUpdateResponse);
+  rpc GetValue(GetValueRequest) returns (GetValueResponse);
+  rpc GetAllMetrics(GetAllMetricsRequest) returns (GetAllMetricsResponse);
+}
+
+

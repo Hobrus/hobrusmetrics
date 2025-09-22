@@ -12,12 +12,15 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/config"
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/grpcserver"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/handlers"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/repository"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
 	"github.com/Hobrus/hobrusmetrics.git/internal/pkg/buildinfo"
 
+	"google.golang.org/grpc"
+	"net"
 	_ "net/http/pprof"
 )
 
@@ -151,6 +154,19 @@ func main() {
 		serverErr <- srv.ListenAndServe()
 	}()
 
+	// Запускаем gRPC сервер, если включен
+	var grpcSrv *grpc.Server
+	var grpcLn net.Listener
+	if cfg.EnableGRPC {
+		gs, ln, err := grpcserver.StartGRPCServer(cfg, metricsService)
+		if err != nil {
+			logger.Fatalf("gRPC server error: %v", err)
+		}
+		grpcSrv = gs
+		grpcLn = ln
+		logger.Infof("gRPC Server is running on %s", cfg.GRPCAddress)
+	}
+
 	// Ожидаем сигнал завершения или ошибку сервера
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, shutdownSignals()...)
@@ -162,6 +178,12 @@ func main() {
 		defer cancel()
 		if err := srv.Shutdown(ctx); err != nil {
 			logger.Errorf("Server shutdown error: %v", err)
+		}
+		if grpcSrv != nil {
+			grpcSrv.GracefulStop()
+			if grpcLn != nil {
+				_ = grpcLn.Close()
+			}
 		}
 		if err := storage.Shutdown(); err != nil {
 			logger.Errorf("Failed to save metrics during shutdown: %v", err)
