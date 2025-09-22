@@ -6,6 +6,8 @@
 
 package grpcapi
 
+//lint:file-ignore SA1019 Allow generated code to use deprecated Exporter until upstream removes it
+
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"

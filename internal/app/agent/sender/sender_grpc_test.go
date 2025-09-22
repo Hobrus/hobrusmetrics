@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	grpcapi "github.com/Hobrus/hobrusmetrics.git/internal/app/grpcapi"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/grpcserver"
@@ -47,7 +48,7 @@ func TestGRPCSender_SendBatchGRPC(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// verify through client that values exist
-	conn, err := grpc.Dial(addr, grpc.WithInsecure())
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	defer conn.Close()
 	client := grpcapi.NewMetricsServiceClient(conn)
