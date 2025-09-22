@@ -114,21 +114,11 @@ func main() {
 		add(a)
 	}
 
-	// All SA analyzers, except SA1019 (deprecated APIs).
-	// SA1019 is particularly noisy for generated code (e.g. protobuf Exporter field)
-	// and our simple runner doesn't honor staticcheck's //lint:file-ignore directives
-	// or skip-generated behavior. Exclude it to keep the signal high.
+	// All SA analyzers only
 	for _, v := range staticcheck.Analyzers {
-		if v.Analyzer == nil {
-			continue
+		if v.Analyzer != nil && strings.HasPrefix(v.Analyzer.Name, "SA") {
+			add(wrap(v.Analyzer))
 		}
-		if !strings.HasPrefix(v.Analyzer.Name, "SA") {
-			continue
-		}
-		if v.Analyzer.Name == "SA1019" { // using deprecated APIs
-			continue
-		}
-		add(wrap(v.Analyzer))
 	}
 
 	// Select a small subset from other classes to satisfy the requirement

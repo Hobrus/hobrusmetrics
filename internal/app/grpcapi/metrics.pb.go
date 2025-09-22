@@ -6,8 +6,6 @@
 
 package grpcapi
 
-//lint:file-ignore SA1019 Allow generated code to use deprecated Exporter until upstream removes it
-
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -698,116 +696,7 @@ func file_internal_app_grpcapi_metrics_proto_init() {
 	if File_internal_app_grpcapi_metrics_proto != nil {
 		return
 	}
-	if !protoimpl.UnsafeEnabled {
-		file_internal_app_grpcapi_metrics_proto_msgTypes[0].Exporter = func(v any, i int) any {
-			switch v := v.(*Metric); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_internal_app_grpcapi_metrics_proto_msgTypes[1].Exporter = func(v any, i int) any {
-			switch v := v.(*UpdateMetricRequest); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_internal_app_grpcapi_metrics_proto_msgTypes[2].Exporter = func(v any, i int) any {
-			switch v := v.(*UpdateMetricResponse); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_internal_app_grpcapi_metrics_proto_msgTypes[3].Exporter = func(v any, i int) any {
-			switch v := v.(*BatchUpdateRequest); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_internal_app_grpcapi_metrics_proto_msgTypes[4].Exporter = func(v any, i int) any {
-			switch v := v.(*BatchUpdateResponse); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_internal_app_grpcapi_metrics_proto_msgTypes[5].Exporter = func(v any, i int) any {
-			switch v := v.(*GetValueRequest); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_internal_app_grpcapi_metrics_proto_msgTypes[6].Exporter = func(v any, i int) any {
-			switch v := v.(*GetValueResponse); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_internal_app_grpcapi_metrics_proto_msgTypes[7].Exporter = func(v any, i int) any {
-			switch v := v.(*GetAllMetricsRequest); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_internal_app_grpcapi_metrics_proto_msgTypes[8].Exporter = func(v any, i int) any {
-			switch v := v.(*GetAllMetricsResponse); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-	}
+	// Note: Exporter assignments removed to avoid deprecated API usage.
 	file_internal_app_grpcapi_metrics_proto_msgTypes[0].OneofWrappers = []any{
 		(*Metric_Delta)(nil),
 		(*Metric_Value)(nil),
