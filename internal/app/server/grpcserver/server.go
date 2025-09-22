@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -131,12 +132,16 @@ func (s *MetricsServer) UpdateMetric(ctx context.Context, req *grpcapi.UpdateMet
 	switch m.Type {
 	case grpcapi.MetricType_GAUGE:
 		// parse to float64
-		var fv float64
-		fmt.Sscanf(updated, "%f", &fv)
+		fv, err := strconv.ParseFloat(strings.TrimSpace(updated), 64)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to parse updated gauge")
+		}
 		out.MetricValue = &grpcapi.Metric_Value{Value: fv}
 	case grpcapi.MetricType_COUNTER:
-		var iv int64
-		fmt.Sscanf(updated, "%d", &iv)
+		iv, err := strconv.ParseInt(strings.TrimSpace(updated), 10, 64)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to parse updated counter")
+		}
 		out.MetricValue = &grpcapi.Metric_Delta{Delta: iv}
 	}
 	return &grpcapi.UpdateMetricResponse{Metric: out}, nil
@@ -201,13 +206,17 @@ func (s *MetricsServer) GetValue(ctx context.Context, req *grpcapi.GetValueReque
 	out := &grpcapi.Metric{Id: req.Id}
 	switch req.Type {
 	case grpcapi.MetricType_GAUGE:
-		var fv float64
-		fmt.Sscanf(val, "%f", &fv)
+		fv, err := strconv.ParseFloat(strings.TrimSpace(val), 64)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to parse gauge")
+		}
 		out.Type = grpcapi.MetricType_GAUGE
 		out.MetricValue = &grpcapi.Metric_Value{Value: fv}
 	case grpcapi.MetricType_COUNTER:
-		var iv int64
-		fmt.Sscanf(val, "%d", &iv)
+		iv, err := strconv.ParseInt(strings.TrimSpace(val), 10, 64)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to parse counter")
+		}
 		out.Type = grpcapi.MetricType_COUNTER
 		out.MetricValue = &grpcapi.Metric_Delta{Delta: iv}
 	}
@@ -225,7 +234,8 @@ func (s *MetricsServer) GetAllMetrics(ctx context.Context, _ *grpcapi.GetAllMetr
 	counters := map[string]int64{}
 	for k, v := range all {
 		var iv int64
-		if _, err := fmt.Sscanf(v, "%d", &iv); err == nil {
+		if parsed, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+			iv = parsed
 			counters[k] = iv
 		}
 	}
@@ -285,13 +295,15 @@ func (s *MetricsServer) updateBatchThroughService(batch []serviceMetricJSON) ([]
 			continue
 		}
 		if m.MType == service.CounterMetric {
-			var iv int64
-			fmt.Sscanf(val, "%d", &iv)
-			out = append(out, serviceMetricJSON{ID: m.ID, MType: m.MType, IValue: &iv})
+			if iv, err := strconv.ParseInt(strings.TrimSpace(val), 10, 64); err == nil {
+				ivCopy := iv
+				out = append(out, serviceMetricJSON{ID: m.ID, MType: m.MType, IValue: &ivCopy})
+			}
 		} else {
-			var fv float64
-			fmt.Sscanf(val, "%f", &fv)
-			out = append(out, serviceMetricJSON{ID: m.ID, MType: m.MType, FValue: &fv})
+			if fv, err := strconv.ParseFloat(strings.TrimSpace(val), 64); err == nil {
+				fvCopy := fv
+				out = append(out, serviceMetricJSON{ID: m.ID, MType: m.MType, FValue: &fvCopy})
+			}
 		}
 	}
 	return out, nil
