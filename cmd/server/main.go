@@ -86,6 +86,8 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(middleware.LoggingMiddleware(logger))
+	// Проверка доверенной подсети перед обработкой метрик
+	router.Use(middleware.TrustedSubnetMiddleware(cfg.TrustedSubnet))
 	if cfg.Key != "" {
 		router.Use(middleware.HashRequestMiddleware(cfg.Key))
 		router.Use(middleware.HashResponseMiddleware(cfg.Key))

@@ -22,6 +22,8 @@ type Config struct {
 	EnableHTTPS bool
 	// Путь к приватному ключу RSA для расшифровки входящих сообщений (CRYPTO_KEY или -crypto-key)
 	CryptoKeyPath string
+	// Доверенная подсеть в формате CIDR; пусто — проверка отключена
+	TrustedSubnet string
 }
 
 // serverJSONConfig описывает формат JSON-конфига для сервера.
@@ -34,8 +36,9 @@ type serverJSONConfig struct {
 	DatabaseDSN   *string `json:"database_dsn"`
 	CryptoKey     *string `json:"crypto_key"`
 	// Дополнительные действующие опции приложения
-	Key         *string `json:"key"`
-	EnableHTTPS *bool   `json:"enable_https"`
+	Key           *string `json:"key"`
+	EnableHTTPS   *bool   `json:"enable_https"`
+	TrustedSubnet *string `json:"trusted_subnet"`
 }
 
 // findConfigPathFromArgs ищет путь к JSON-файлу конфигурации в аргументах командной строки (-c, -config)
@@ -85,6 +88,9 @@ func applyJSONToConfig(cfg *Config, jc serverJSONConfig) {
 	if jc.EnableHTTPS != nil {
 		cfg.EnableHTTPS = *jc.EnableHTTPS
 	}
+	if jc.TrustedSubnet != nil {
+		cfg.TrustedSubnet = *jc.TrustedSubnet
+	}
 	if jc.StoreInterval != nil && *jc.StoreInterval != "" {
 		if d, err := time.ParseDuration(*jc.StoreInterval); err == nil {
 			cfg.StoreInterval = d
@@ -103,6 +109,7 @@ func NewConfig() *Config {
 		Key:             "",
 		EnableHTTPS:     false,
 		CryptoKeyPath:   "",
+		TrustedSubnet:   "",
 	}
 
 	// 1) Предварительно ищем путь к JSON-конфигу в аргументах или окружении
@@ -137,6 +144,8 @@ func NewConfig() *Config {
 	flag.BoolVar(&cfg.EnableHTTPS, "s", cfg.EnableHTTPS, "Enable HTTPS (ListenAndServeTLS)")
 	// Флаг приватного ключа для асимметричного шифрования
 	flag.StringVar(&cfg.CryptoKeyPath, "crypto-key", cfg.CryptoKeyPath, "Path to RSA private key (PEM)")
+	// Флаг доверенной подсети в формате CIDR
+	flag.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "Trusted subnet in CIDR (e.g. 192.168.1.0/24)")
 	flag.Parse()
 
 	if envAddress := os.Getenv("ADDRESS"); envAddress != "" {
@@ -176,6 +185,10 @@ func NewConfig() *Config {
 
 	if envCryptoKey := os.Getenv("CRYPTO_KEY"); envCryptoKey != "" {
 		cfg.CryptoKeyPath = envCryptoKey
+	}
+
+	if envTrusted := os.Getenv("TRUSTED_SUBNET"); envTrusted != "" {
+		cfg.TrustedSubnet = envTrusted
 	}
 
 	return cfg
