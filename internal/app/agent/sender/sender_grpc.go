@@ -83,15 +83,17 @@ func (g *GRPCSender) SendBatchGRPC(metrics map[string]interface{}) {
 		return
 	}
 
-	req := &grpcapi.BatchUpdateRequest{Metrics: make([]*grpcapi.Metric, 0, len(metrics))}
+    req := &grpcapi.BatchUpdateRequest{Metrics: make([]*grpcapi.Metric, 0, len(metrics))}
 	for name, val := range metrics {
 		switch v := val.(type) {
 		case int64:
 			d := v
-			req.Metrics = append(req.Metrics, &grpcapi.Metric{Id: name, Type: grpcapi.MetricType_COUNTER, MetricValue: &grpcapi.Metric_Delta{Delta: d}})
+            tt := grpcapi.MetricType_COUNTER
+            req.Metrics = append(req.Metrics, &grpcapi.Metric{Id: proto.String(name), Type: &tt, MetricValue: &grpcapi.Metric_Delta{Delta: d}})
 		case float64:
 			f := v
-			req.Metrics = append(req.Metrics, &grpcapi.Metric{Id: name, Type: grpcapi.MetricType_GAUGE, MetricValue: &grpcapi.Metric_Value{Value: f}})
+            tt := grpcapi.MetricType_GAUGE
+            req.Metrics = append(req.Metrics, &grpcapi.Metric{Id: proto.String(name), Type: &tt, MetricValue: &grpcapi.Metric_Value{Value: f}})
 		}
 	}
 

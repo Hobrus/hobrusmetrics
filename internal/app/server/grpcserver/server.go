@@ -110,7 +110,7 @@ func (s *MetricsServer) UpdateMetric(ctx context.Context, req *grpcapi.UpdateMet
 	m := req.Metric
 	var mtype string
 	var value string
-	switch m.Type {
+    switch m.GetType() {
 	case grpcapi.MetricType_GAUGE:
 		mtype = service.GaugeMetric
 		value = fmt.Sprintf("%g", m.GetValue())
@@ -120,16 +120,18 @@ func (s *MetricsServer) UpdateMetric(ctx context.Context, req *grpcapi.UpdateMet
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "unsupported type")
 	}
-	if err := s.svc.UpdateMetric(mtype, m.Id, value); err != nil {
+    if err := s.svc.UpdateMetric(mtype, m.GetId(), value); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 	// read back actual value
-	updated, err := s.svc.GetMetricValue(mtype, m.Id)
+    updated, err := s.svc.GetMetricValue(mtype, m.GetId())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to fetch updated value")
 	}
-	out := &grpcapi.Metric{Id: m.Id, Type: m.Type}
-	switch m.Type {
+    out := &grpcapi.Metric{Id: proto.String(m.GetId())}
+    t := m.GetType()
+    out.Type = &t
+    switch m.GetType() {
 	case grpcapi.MetricType_GAUGE:
 		// parse to float64
 		fv, err := strconv.ParseFloat(strings.TrimSpace(updated), 64)
@@ -153,17 +155,17 @@ func (s *MetricsServer) BatchUpdate(ctx context.Context, req *grpcapi.BatchUpdat
 	}
 	// convert to middleware.MetricsJSON slice for service batch API
 	batch := make([]serviceMetricJSON, 0, len(req.Metrics))
-	for _, m := range req.Metrics {
+    for _, m := range req.Metrics {
 		if m == nil {
 			continue
 		}
-		switch m.Type {
+        switch m.GetType() {
 		case grpcapi.MetricType_GAUGE:
-			val := m.GetValue()
-			batch = append(batch, serviceMetricJSON{ID: m.Id, MType: service.GaugeMetric, FValue: &val})
+            val := m.GetValue()
+            batch = append(batch, serviceMetricJSON{ID: m.GetId(), MType: service.GaugeMetric, FValue: &val})
 		case grpcapi.MetricType_COUNTER:
-			d := m.GetDelta()
-			batch = append(batch, serviceMetricJSON{ID: m.Id, MType: service.CounterMetric, IValue: &d})
+            d := m.GetDelta()
+            batch = append(batch, serviceMetricJSON{ID: m.GetId(), MType: service.CounterMetric, IValue: &d})
 		}
 	}
 	updated, err := s.updateBatchThroughService(batch)
@@ -171,27 +173,29 @@ func (s *MetricsServer) BatchUpdate(ctx context.Context, req *grpcapi.BatchUpdat
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 	// map back to grpc
-	resp := &grpcapi.BatchUpdateResponse{Metrics: make([]*grpcapi.Metric, 0, len(updated))}
-	for _, m := range updated {
-		out := &grpcapi.Metric{Id: m.ID}
-		if m.MType == service.CounterMetric && m.IValue != nil {
-			out.Type = grpcapi.MetricType_COUNTER
-			out.MetricValue = &grpcapi.Metric_Delta{Delta: *m.IValue}
-		} else if m.MType == service.GaugeMetric && m.FValue != nil {
-			out.Type = grpcapi.MetricType_GAUGE
-			out.MetricValue = &grpcapi.Metric_Value{Value: *m.FValue}
-		}
-		resp.Metrics = append(resp.Metrics, out)
-	}
+    resp := &grpcapi.BatchUpdateResponse{Metrics: make([]*grpcapi.Metric, 0, len(updated))}
+    for _, m := range updated {
+        out := &grpcapi.Metric{Id: proto.String(m.ID)}
+        if m.MType == service.CounterMetric && m.IValue != nil {
+            tt := grpcapi.MetricType_COUNTER
+            out.Type = &tt
+            out.MetricValue = &grpcapi.Metric_Delta{Delta: *m.IValue}
+        } else if m.MType == service.GaugeMetric && m.FValue != nil {
+            tt := grpcapi.MetricType_GAUGE
+            out.Type = &tt
+            out.MetricValue = &grpcapi.Metric_Value{Value: *m.FValue}
+        }
+        resp.Metrics = append(resp.Metrics, out)
+    }
 	return resp, nil
 }
 
 func (s *MetricsServer) GetValue(ctx context.Context, req *grpcapi.GetValueRequest) (*grpcapi.GetValueResponse, error) {
-	if req == nil || req.Id == "" {
+    if req == nil || req.GetId() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid request")
 	}
 	var mtype string
-	switch req.Type {
+    switch req.GetType() {
 	case grpcapi.MetricType_GAUGE:
 		mtype = service.GaugeMetric
 	case grpcapi.MetricType_COUNTER:
@@ -199,25 +203,27 @@ func (s *MetricsServer) GetValue(ctx context.Context, req *grpcapi.GetValueReque
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "unsupported type")
 	}
-	val, err := s.svc.GetMetricValue(mtype, req.Id)
+    val, err := s.svc.GetMetricValue(mtype, req.GetId())
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "metric not found")
 	}
-	out := &grpcapi.Metric{Id: req.Id}
-	switch req.Type {
+    out := &grpcapi.Metric{Id: proto.String(req.GetId())}
+    switch req.GetType() {
 	case grpcapi.MetricType_GAUGE:
 		fv, err := strconv.ParseFloat(strings.TrimSpace(val), 64)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to parse gauge")
 		}
-		out.Type = grpcapi.MetricType_GAUGE
+        tt := grpcapi.MetricType_GAUGE
+        out.Type = &tt
 		out.MetricValue = &grpcapi.Metric_Value{Value: fv}
 	case grpcapi.MetricType_COUNTER:
 		iv, err := strconv.ParseInt(strings.TrimSpace(val), 10, 64)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to parse counter")
 		}
-		out.Type = grpcapi.MetricType_COUNTER
+        tt := grpcapi.MetricType_COUNTER
+        out.Type = &tt
 		out.MetricValue = &grpcapi.Metric_Delta{Delta: iv}
 	}
 	return &grpcapi.GetValueResponse{Metric: out}, nil

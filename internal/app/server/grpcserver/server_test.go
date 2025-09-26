@@ -57,33 +57,36 @@ func TestGRPCServer_UpdateAndGet(t *testing.T) {
 	client := grpcapi.NewMetricsServiceClient(conn)
 
 	// Update gauge
-	ur := &grpcapi.UpdateMetricRequest{Metric: &grpcapi.Metric{Id: "g1", Type: grpcapi.MetricType_GAUGE, MetricValue: &grpcapi.Metric_Value{Value: 1.5}}}
-	b, err := proto.Marshal(ur)
-	require.NoError(t, err)
-	md := metadata.Pairs("hashsha256", computeHMAC(b, key))
-	ctx := metadata.NewOutgoingContext(context.Background(), md)
-	resp, err := client.UpdateMetric(ctx, ur)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	m := resp.Metric
-	require.Equal(t, grpcapi.MetricType_GAUGE, m.Type)
+    {
+        tt := grpcapi.MetricType_GAUGE
+        ur := &grpcapi.UpdateMetricRequest{Metric: &grpcapi.Metric{Id: proto.String("g1"), Type: &tt, MetricValue: &grpcapi.Metric_Value{Value: 1.5}}}
+        b, err := proto.Marshal(ur)
+        require.NoError(t, err)
+        md := metadata.Pairs("hashsha256", computeHMAC(b, key))
+        ctx := metadata.NewOutgoingContext(context.Background(), md)
+        resp, err := client.UpdateMetric(ctx, ur)
+        require.NoError(t, err)
+        require.NotNil(t, resp)
+        m := resp.Metric
+        require.Equal(t, grpcapi.MetricType_GAUGE, m.GetType())
+    }
 
 	// Get value for gauge
-	gr := &grpcapi.GetValueRequest{Id: "g1", Type: grpcapi.MetricType_GAUGE}
+    gr := &grpcapi.GetValueRequest{Id: proto.String("g1"), Type: func() *grpcapi.MetricType { v := grpcapi.MetricType_GAUGE; return &v }()}
 	b2, err := proto.Marshal(gr)
 	require.NoError(t, err)
 	ctx2 := metadata.NewOutgoingContext(context.Background(), metadata.Pairs("hashsha256", computeHMAC(b2, key)))
 	gv, err := client.GetValue(ctx2, gr)
 	require.NoError(t, err)
-	require.Equal(t, "g1", gv.Metric.Id)
+    require.Equal(t, "g1", gv.Metric.GetId())
 	_, ok := gv.Metric.MetricValue.(*grpcapi.Metric_Value)
 	require.True(t, ok)
 
 	// Batch update: counter + gauge
-	br := &grpcapi.BatchUpdateRequest{Metrics: []*grpcapi.Metric{
-		{Id: "c1", Type: grpcapi.MetricType_COUNTER, MetricValue: &grpcapi.Metric_Delta{Delta: 10}},
-		{Id: "g2", Type: grpcapi.MetricType_GAUGE, MetricValue: &grpcapi.Metric_Value{Value: 2.25}},
-	}}
+    br := &grpcapi.BatchUpdateRequest{Metrics: []*grpcapi.Metric{
+        func() *grpcapi.Metric { tt := grpcapi.MetricType_COUNTER; return &grpcapi.Metric{Id: proto.String("c1"), Type: &tt, MetricValue: &grpcapi.Metric_Delta{Delta: 10}} }(),
+        func() *grpcapi.Metric { tt := grpcapi.MetricType_GAUGE; return &grpcapi.Metric{Id: proto.String("g2"), Type: &tt, MetricValue: &grpcapi.Metric_Value{Value: 2.25}} }(),
+    }}
 	b3, err := proto.Marshal(br)
 	require.NoError(t, err)
 	ctx3 := metadata.NewOutgoingContext(context.Background(), metadata.Pairs("hashsha256", computeHMAC(b3, key)))
@@ -99,7 +102,7 @@ func TestGRPCServer_HMACRejected(t *testing.T) {
 	client := grpcapi.NewMetricsServiceClient(conn)
 
 	// wrong signature
-	ur := &grpcapi.UpdateMetricRequest{Metric: &grpcapi.Metric{Id: "bad", Type: grpcapi.MetricType_COUNTER, MetricValue: &grpcapi.Metric_Delta{Delta: 1}}}
+    ur := func() *grpcapi.UpdateMetricRequest { tt := grpcapi.MetricType_COUNTER; return &grpcapi.UpdateMetricRequest{Metric: &grpcapi.Metric{Id: proto.String("bad"), Type: &tt, MetricValue: &grpcapi.Metric_Delta{Delta: 1}}} }()
 	b, err := proto.Marshal(ur)
 	require.NoError(t, err)
 	md := metadata.Pairs("hashsha256", computeHMAC(b, "wrong"))

@@ -53,7 +53,7 @@ func TestGRPCSender_SendBatchGRPC(t *testing.T) {
 	defer conn.Close()
 	client := grpcapi.NewMetricsServiceClient(conn)
 
-	val, err := client.GetValue(context.Background(), &grpcapi.GetValueRequest{Id: "c1", Type: grpcapi.MetricType_COUNTER})
+    val, err := client.GetValue(context.Background(), &grpcapi.GetValueRequest{Id: func() *string { s := "c1"; return &s }(), Type: func() *grpcapi.MetricType { v := grpcapi.MetricType_COUNTER; return &v }()})
 	require.NoError(t, err)
 	require.Equal(t, int64(5), val.Metric.GetDelta())
 }
