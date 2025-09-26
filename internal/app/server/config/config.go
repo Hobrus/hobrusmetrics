@@ -153,9 +153,11 @@ func NewConfig() *Config {
 
 	// 1) Предварительно ищем путь к JSON-конфигу в аргументах или окружении
 	configPath := findConfigPathFromArgs()
-	if configPath == "" {
-		configPath = os.Getenv("CONFIG")
-	}
+    if configPath == "" {
+        if v, ok := os.LookupEnv("CONFIG"); ok {
+            configPath = v
+        }
+    }
 
 	// 2) Если найден путь, читаем JSON и применяем значения как новые дефолты
 	if configPath != "" {
@@ -193,69 +195,69 @@ func NewConfig() *Config {
 	flag.StringVar(&cfg.GRPCKeyFile, "grpc-key-file", cfg.GRPCKeyFile, "Path to gRPC TLS private key file")
 	flag.Parse()
 
-	if envAddress := os.Getenv("ADDRESS"); envAddress != "" {
-		cfg.ServerAddress = envAddress
-	}
+    if envAddress, ok := os.LookupEnv("ADDRESS"); ok {
+        cfg.ServerAddress = envAddress
+    }
 
-	if envStoreInterval := os.Getenv("STORE_INTERVAL"); envStoreInterval != "" {
-		if si, err := strconv.Atoi(envStoreInterval); err == nil {
+    if envStoreInterval, ok := os.LookupEnv("STORE_INTERVAL"); ok {
+        if si, err := strconv.Atoi(envStoreInterval); err == nil {
 			cfg.StoreInterval = time.Duration(si) * time.Second
 		}
 	} else {
 		cfg.StoreInterval = time.Duration(*storeInterval) * time.Second
 	}
 
-	if envFilePath := os.Getenv("FILE_STORAGE_PATH"); envFilePath != "" {
-		cfg.FileStoragePath = envFilePath
-	}
+    if envFilePath, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
+        cfg.FileStoragePath = envFilePath
+    }
 
-	if envRestore := os.Getenv("RESTORE"); envRestore != "" {
-		cfg.Restore, _ = strconv.ParseBool(envRestore)
-	}
+    if envRestore, ok := os.LookupEnv("RESTORE"); ok {
+        cfg.Restore, _ = strconv.ParseBool(envRestore)
+    }
 
-	if envDatabaseDSN := os.Getenv("DATABASE_DSN"); envDatabaseDSN != "" {
-		cfg.DatabaseDSN = envDatabaseDSN
-	}
+    if envDatabaseDSN, ok := os.LookupEnv("DATABASE_DSN"); ok {
+        cfg.DatabaseDSN = envDatabaseDSN
+    }
 
 	// Читаем ключ из переменной окружения KEY (если задан)
-	if envKey := os.Getenv("KEY"); envKey != "" {
-		cfg.Key = envKey
-	}
+    if envKey, ok := os.LookupEnv("KEY"); ok {
+        cfg.Key = envKey
+    }
 
-	if envEnableHTTPS := os.Getenv("ENABLE_HTTPS"); envEnableHTTPS != "" {
-		if v, err := strconv.ParseBool(envEnableHTTPS); err == nil {
+    if envEnableHTTPS, ok := os.LookupEnv("ENABLE_HTTPS"); ok {
+        if v, err := strconv.ParseBool(envEnableHTTPS); err == nil {
 			cfg.EnableHTTPS = v
 		}
 	}
 
-	if envCryptoKey := os.Getenv("CRYPTO_KEY"); envCryptoKey != "" {
-		cfg.CryptoKeyPath = envCryptoKey
-	}
+    if envCryptoKey, ok := os.LookupEnv("CRYPTO_KEY"); ok {
+        cfg.CryptoKeyPath = envCryptoKey
+    }
 
-	if envTrusted := os.Getenv("TRUSTED_SUBNET"); envTrusted != "" {
-		cfg.TrustedSubnet = envTrusted
-	}
+    if envTrusted, ok := os.LookupEnv("TRUSTED_SUBNET"); ok {
+        cfg.TrustedSubnet = envTrusted
+    }
 
 	// gRPC из окружения
-	if ev := os.Getenv("ENABLE_GRPC"); ev != "" {
-		if v, err := strconv.ParseBool(ev); err == nil {
+    if ev, ok := os.LookupEnv("ENABLE_GRPC"); ok {
+        if v, err := strconv.ParseBool(ev); err == nil {
 			cfg.EnableGRPC = v
 		}
 	}
-	if ev := os.Getenv("GRPC_ADDRESS"); ev != "" {
-		cfg.GRPCAddress = ev
-	}
-	if ev := os.Getenv("GRPC_ENABLE_TLS"); ev != "" {
-		if v, err := strconv.ParseBool(ev); err == nil {
+    if ev, ok := os.LookupEnv("GRPC_ADDRESS"); ok {
+        cfg.GRPCAddress = ev
+    }
+    if ev, ok := os.LookupEnv("GRPC_ENABLE_TLS"); ok {
+        if v, err := strconv.ParseBool(ev); err == nil {
 			cfg.EnableGRPCTLS = v
 		}
 	}
-	if ev := os.Getenv("GRPC_CERT_FILE"); ev != "" {
-		cfg.GRPCCertFile = ev
-	}
-	if ev := os.Getenv("GRPC_KEY_FILE"); ev != "" {
-		cfg.GRPCKeyFile = ev
-	}
+    if ev, ok := os.LookupEnv("GRPC_CERT_FILE"); ok {
+        cfg.GRPCCertFile = ev
+    }
+    if ev, ok := os.LookupEnv("GRPC_KEY_FILE"); ok {
+        cfg.GRPCKeyFile = ev
+    }
 
 	return cfg
 }

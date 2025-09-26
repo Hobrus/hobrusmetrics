@@ -131,9 +131,11 @@ func NewConfig() *Config {
 
 	// 1) Ищем путь к JSON-конфигу в аргументах или окружении
 	configPath := findConfigPathFromArgs()
-	if configPath == "" {
-		configPath = os.Getenv("CONFIG")
-	}
+    if configPath == "" {
+        if v, ok := os.LookupEnv("CONFIG"); ok {
+            configPath = v
+        }
+    }
 
 	// 2) Применяем значения из JSON как дефолты
 	if configPath != "" {
@@ -164,56 +166,56 @@ func NewConfig() *Config {
 	flag.StringVar(&cfg.GRPCCAFile, "grpc-ca-file", cfg.GRPCCAFile, "Path to CA cert for gRPC TLS")
 	flag.Parse()
 
-	if envAddress := os.Getenv("ADDRESS"); envAddress != "" {
-		cfg.ServerAddress = envAddress
-	}
-	if envReportInterval := os.Getenv("REPORT_INTERVAL"); envReportInterval != "" {
-		if ri, err := strconv.Atoi(envReportInterval); err == nil {
+    if envAddress, ok := os.LookupEnv("ADDRESS"); ok {
+        cfg.ServerAddress = envAddress
+    }
+    if envReportInterval, ok := os.LookupEnv("REPORT_INTERVAL"); ok {
+        if ri, err := strconv.Atoi(envReportInterval); err == nil {
 			cfg.ReportInterval = time.Duration(ri) * time.Second
 		}
 	} else {
 		cfg.ReportInterval = time.Duration(*reportInterval) * time.Second
 	}
-	if envPollInterval := os.Getenv("POLL_INTERVAL"); envPollInterval != "" {
-		if pi, err := strconv.Atoi(envPollInterval); err == nil {
+    if envPollInterval, ok := os.LookupEnv("POLL_INTERVAL"); ok {
+        if pi, err := strconv.Atoi(envPollInterval); err == nil {
 			cfg.PollInterval = time.Duration(pi) * time.Second
 		}
 	} else {
 		cfg.PollInterval = time.Duration(*pollInterval) * time.Second
 	}
-	if envKey := os.Getenv("KEY"); envKey != "" {
-		cfg.Key = envKey
-	}
-	if envRateLimit := os.Getenv("RATE_LIMIT"); envRateLimit != "" {
-		if rl, err := strconv.Atoi(envRateLimit); err == nil {
+    if envKey, ok := os.LookupEnv("KEY"); ok {
+        cfg.Key = envKey
+    }
+    if envRateLimit, ok := os.LookupEnv("RATE_LIMIT"); ok {
+        if rl, err := strconv.Atoi(envRateLimit); err == nil {
 			cfg.RateLimit = rl
 		}
 	}
-	if envEnableHTTPS := os.Getenv("ENABLE_HTTPS"); envEnableHTTPS != "" {
-		if v, err := strconv.ParseBool(envEnableHTTPS); err == nil {
+    if envEnableHTTPS, ok := os.LookupEnv("ENABLE_HTTPS"); ok {
+        if v, err := strconv.ParseBool(envEnableHTTPS); err == nil {
 			cfg.EnableHTTPS = v
 		}
 	}
-	if envCryptoKey := os.Getenv("CRYPTO_KEY"); envCryptoKey != "" {
-		cfg.CryptoKeyPath = envCryptoKey
-	}
+    if envCryptoKey, ok := os.LookupEnv("CRYPTO_KEY"); ok {
+        cfg.CryptoKeyPath = envCryptoKey
+    }
 	// gRPC окружение
-	if ev := os.Getenv("USE_GRPC"); ev != "" {
-		if v, err := strconv.ParseBool(ev); err == nil {
+    if ev, ok := os.LookupEnv("USE_GRPC"); ok {
+        if v, err := strconv.ParseBool(ev); err == nil {
 			cfg.UseGRPC = v
 		}
 	}
-	if ev := os.Getenv("GRPC_ADDRESS"); ev != "" {
-		cfg.GRPCAddress = ev
-	}
-	if ev := os.Getenv("GRPC_ENABLE_TLS"); ev != "" {
-		if v, err := strconv.ParseBool(ev); err == nil {
+    if ev, ok := os.LookupEnv("GRPC_ADDRESS"); ok {
+        cfg.GRPCAddress = ev
+    }
+    if ev, ok := os.LookupEnv("GRPC_ENABLE_TLS"); ok {
+        if v, err := strconv.ParseBool(ev); err == nil {
 			cfg.EnableGRPCTLS = v
 		}
 	}
-	if ev := os.Getenv("GRPC_CA_FILE"); ev != "" {
-		cfg.GRPCCAFile = ev
-	}
+    if ev, ok := os.LookupEnv("GRPC_CA_FILE"); ok {
+        cfg.GRPCCAFile = ev
+    }
 	// Игнорируем позиционные аргументы: библиотечный код не должен завершать процесс.
 
 	return cfg

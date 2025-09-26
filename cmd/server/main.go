@@ -131,9 +131,9 @@ func main() {
 	// Запускаем сервер в отдельной горутине
 	go func() {
 		logger.Infof("Server is running on %s", cfg.ServerAddress)
-		if cfg.EnableHTTPS {
-			certFile := os.Getenv("TLS_CERT_FILE")
-			keyFile := os.Getenv("TLS_KEY_FILE")
+        if cfg.EnableHTTPS {
+            certFile, _ := os.LookupEnv("TLS_CERT_FILE")
+            keyFile, _ := os.LookupEnv("TLS_KEY_FILE")
 			if certFile == "" || keyFile == "" {
 				if _, err := os.Stat("server.crt"); err == nil {
 					certFile = "server.crt"
