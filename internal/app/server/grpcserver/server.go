@@ -1,29 +1,29 @@
 package grpcserver
 
 import (
-	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
-	"errors"
-	"fmt"
-	"net"
-	"strconv"
-	"strings"
-	"time"
+    "context"
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/hex"
+    "errors"
+    "fmt"
+    "net"
+    "strconv"
+    "strings"
+    "time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
-	_ "google.golang.org/grpc/encoding/gzip"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/peer"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/credentials"
+    _ "google.golang.org/grpc/encoding/gzip"
+    "google.golang.org/grpc/metadata"
+    "google.golang.org/grpc/status"
+    "google.golang.org/protobuf/proto"
 
-	grpcapi "github.com/Hobrus/hobrusmetrics.git/internal/app/grpcapi"
-	servercfg "github.com/Hobrus/hobrusmetrics.git/internal/app/server/config"
-	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
+    grpcapi "github.com/Hobrus/hobrusmetrics.git/internal/app/grpcapi"
+    servercfg "github.com/Hobrus/hobrusmetrics.git/internal/app/server/config"
+    "github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
+    "github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
 )
 
 // computeHMAC calculates HMAC-SHA256 hex over data with key
@@ -56,42 +56,6 @@ func hmacInterceptor(key string) grpc.UnaryServerInterceptor {
 		}
 		return handler(ctx, req)
 	}
-}
-
-// trustedSubnetInterceptor checks client IP against CIDR for mutating RPCs
-func trustedSubnetInterceptor(cidr string) (grpc.UnaryServerInterceptor, error) {
-	if strings.TrimSpace(cidr) == "" {
-		return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-			return handler(ctx, req)
-		}, nil
-	}
-	_, ipnet, err := net.ParseCIDR(strings.TrimSpace(cidr))
-	if err != nil {
-		return nil, err
-	}
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		// apply only for update methods
-		if strings.HasSuffix(info.FullMethod, "/UpdateMetric") || strings.HasSuffix(info.FullMethod, "/BatchUpdate") {
-			var ipStr string
-			if md, ok := metadata.FromIncomingContext(ctx); ok {
-				vals := md.Get("x-real-ip")
-				if len(vals) > 0 {
-					ipStr = strings.TrimSpace(vals[0])
-				}
-			}
-			if ipStr == "" {
-				if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
-					host, _, _ := net.SplitHostPort(p.Addr.String())
-					ipStr = host
-				}
-			}
-			ip := net.ParseIP(ipStr)
-			if ip == nil || !ipnet.Contains(ip) {
-				return nil, status.Errorf(codes.PermissionDenied, "forbidden")
-			}
-		}
-		return handler(ctx, req)
-	}, nil
 }
 
 type MetricsServer struct {
@@ -319,7 +283,7 @@ func (s *MetricsServer) updateBatchThroughService(batch []serviceMetricJSON) ([]
 func StartGRPCServer(cfg *servercfg.Config, svc *service.MetricsService) (*grpc.Server, net.Listener, error) {
 	var opts []grpc.ServerOption
 	// chain interceptors: trusted subnet then hmac
-	ts, err := trustedSubnetInterceptor(cfg.TrustedSubnet)
+    ts, err := middleware.TrustedSubnetUnaryInterceptor(cfg.TrustedSubnet)
 	if err != nil {
 		return nil, nil, err
 	}
