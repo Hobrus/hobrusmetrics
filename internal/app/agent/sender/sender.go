@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -222,6 +223,9 @@ func (s *Sender) Send(metrics map[string]interface{}) {
 		if hashHeader != "" {
 			req.Header.Set("HashSHA256", hashHeader)
 		}
+		if ip := detectRealIP(); ip != "" {
+			req.Header.Set("X-Real-IP", ip)
+		}
 
 		resp, err := s.sendRequestWithRetry(req)
 		if err != nil {
@@ -291,6 +295,9 @@ func (s *Sender) SendBatch(metrics map[string]interface{}) {
 	if hashHeader != "" {
 		req.Header.Set("HashSHA256", hashHeader)
 	}
+	if ip := detectRealIP(); ip != "" {
+		req.Header.Set("X-Real-IP", ip)
+	}
 
 	resp, err := s.sendRequestWithRetry(req)
 	if err != nil {
@@ -298,4 +305,46 @@ func (s *Sender) SendBatch(metrics map[string]interface{}) {
 		return
 	}
 	resp.Body.Close()
+}
+
+// detectRealIP пытается определить локальный IP-адрес хоста агента (не loopback).
+// Возвращает строковое представление или пустую строку, если определить не удалось.
+func detectRealIP() string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return ""
+	}
+	for _, iface := range ifaces {
+		if (iface.Flags & net.FlagUp) == 0 {
+			continue
+		}
+		if (iface.Flags & net.FlagLoopback) != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil {
+				continue
+			}
+			if ip.IsLoopback() {
+				continue
+			}
+			// Предпочтительно IPv4; если IPv6 — возвращаем как есть
+			if ip4 := ip.To4(); ip4 != nil {
+				return ip4.String()
+			}
+			return ip.String()
+		}
+	}
+	return ""
 }

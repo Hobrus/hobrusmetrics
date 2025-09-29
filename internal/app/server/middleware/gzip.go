@@ -96,11 +96,13 @@ var (
 )
 
 func useGzipPool() bool {
-	gzipPoolOnce.Do(func() {
-		if v := os.Getenv("GZIP_POOL"); v == "0" || strings.EqualFold(v, "false") {
-			gzipPoolEnabled = false
-		}
-	})
+    gzipPoolOnce.Do(func() {
+        if v, ok := os.LookupEnv("GZIP_POOL"); ok {
+            if v == "0" || strings.EqualFold(v, "false") {
+                gzipPoolEnabled = false
+            }
+        }
+    })
 	return gzipPoolEnabled
 }
 

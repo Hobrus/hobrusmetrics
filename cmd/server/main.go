@@ -12,12 +12,15 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/config"
+	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/grpcserver"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/handlers"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/middleware"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/repository"
 	"github.com/Hobrus/hobrusmetrics.git/internal/app/server/service"
 	"github.com/Hobrus/hobrusmetrics.git/internal/pkg/buildinfo"
 
+	"google.golang.org/grpc"
+	"net"
 	_ "net/http/pprof"
 )
 
@@ -86,6 +89,8 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(middleware.LoggingMiddleware(logger))
+	// Проверка доверенной подсети перед обработкой метрик
+	router.Use(middleware.TrustedSubnetMiddleware(cfg.TrustedSubnet))
 	if cfg.Key != "" {
 		router.Use(middleware.HashRequestMiddleware(cfg.Key))
 		router.Use(middleware.HashResponseMiddleware(cfg.Key))
@@ -126,9 +131,9 @@ func main() {
 	// Запускаем сервер в отдельной горутине
 	go func() {
 		logger.Infof("Server is running on %s", cfg.ServerAddress)
-		if cfg.EnableHTTPS {
-			certFile := os.Getenv("TLS_CERT_FILE")
-			keyFile := os.Getenv("TLS_KEY_FILE")
+        if cfg.EnableHTTPS {
+            certFile, _ := os.LookupEnv("TLS_CERT_FILE")
+            keyFile, _ := os.LookupEnv("TLS_KEY_FILE")
 			if certFile == "" || keyFile == "" {
 				if _, err := os.Stat("server.crt"); err == nil {
 					certFile = "server.crt"
@@ -149,6 +154,19 @@ func main() {
 		serverErr <- srv.ListenAndServe()
 	}()
 
+	// Запускаем gRPC сервер, если включен
+	var grpcSrv *grpc.Server
+	var grpcLn net.Listener
+	if cfg.EnableGRPC {
+		gs, ln, err := grpcserver.StartGRPCServer(cfg, metricsService)
+		if err != nil {
+			logger.Fatalf("gRPC server error: %v", err)
+		}
+		grpcSrv = gs
+		grpcLn = ln
+		logger.Infof("gRPC Server is running on %s", cfg.GRPCAddress)
+	}
+
 	// Ожидаем сигнал завершения или ошибку сервера
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, shutdownSignals()...)
@@ -160,6 +178,12 @@ func main() {
 		defer cancel()
 		if err := srv.Shutdown(ctx); err != nil {
 			logger.Errorf("Server shutdown error: %v", err)
+		}
+		if grpcSrv != nil {
+			grpcSrv.GracefulStop()
+			if grpcLn != nil {
+				_ = grpcLn.Close()
+			}
 		}
 		if err := storage.Shutdown(); err != nil {
 			logger.Errorf("Failed to save metrics during shutdown: %v", err)

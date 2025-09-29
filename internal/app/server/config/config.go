@@ -22,6 +22,19 @@ type Config struct {
 	EnableHTTPS bool
 	// Путь к приватному ключу RSA для расшифровки входящих сообщений (CRYPTO_KEY или -crypto-key)
 	CryptoKeyPath string
+	// Доверенная подсеть в формате CIDR; пусто — проверка отключена
+	TrustedSubnet string
+
+	// ========== gRPC ==========
+	// Включение gRPC-сервера
+	EnableGRPC bool
+	// Адрес gRPC-сервера (host:port)
+	GRPCAddress string
+	// Включить TLS для gRPC
+	EnableGRPCTLS bool
+	// Пути к серверным сертификату и ключу для gRPC TLS
+	GRPCCertFile string
+	GRPCKeyFile  string
 }
 
 // serverJSONConfig описывает формат JSON-конфига для сервера.
@@ -34,8 +47,16 @@ type serverJSONConfig struct {
 	DatabaseDSN   *string `json:"database_dsn"`
 	CryptoKey     *string `json:"crypto_key"`
 	// Дополнительные действующие опции приложения
-	Key         *string `json:"key"`
-	EnableHTTPS *bool   `json:"enable_https"`
+	Key           *string `json:"key"`
+	EnableHTTPS   *bool   `json:"enable_https"`
+	TrustedSubnet *string `json:"trusted_subnet"`
+
+	// gRPC
+	EnableGRPC    *bool   `json:"enable_grpc"`
+	GRPCAddress   *string `json:"grpc_address"`
+	EnableGRPCTLS *bool   `json:"grpc_enable_tls"`
+	GRPCCertFile  *string `json:"grpc_cert_file"`
+	GRPCKeyFile   *string `json:"grpc_key_file"`
 }
 
 // findConfigPathFromArgs ищет путь к JSON-файлу конфигурации в аргументах командной строки (-c, -config)
@@ -85,6 +106,25 @@ func applyJSONToConfig(cfg *Config, jc serverJSONConfig) {
 	if jc.EnableHTTPS != nil {
 		cfg.EnableHTTPS = *jc.EnableHTTPS
 	}
+	if jc.TrustedSubnet != nil {
+		cfg.TrustedSubnet = *jc.TrustedSubnet
+	}
+	// gRPC
+	if jc.EnableGRPC != nil {
+		cfg.EnableGRPC = *jc.EnableGRPC
+	}
+	if jc.GRPCAddress != nil && *jc.GRPCAddress != "" {
+		cfg.GRPCAddress = *jc.GRPCAddress
+	}
+	if jc.EnableGRPCTLS != nil {
+		cfg.EnableGRPCTLS = *jc.EnableGRPCTLS
+	}
+	if jc.GRPCCertFile != nil {
+		cfg.GRPCCertFile = *jc.GRPCCertFile
+	}
+	if jc.GRPCKeyFile != nil {
+		cfg.GRPCKeyFile = *jc.GRPCKeyFile
+	}
 	if jc.StoreInterval != nil && *jc.StoreInterval != "" {
 		if d, err := time.ParseDuration(*jc.StoreInterval); err == nil {
 			cfg.StoreInterval = d
@@ -103,13 +143,21 @@ func NewConfig() *Config {
 		Key:             "",
 		EnableHTTPS:     false,
 		CryptoKeyPath:   "",
+		TrustedSubnet:   "",
+		EnableGRPC:      false,
+		GRPCAddress:     "localhost:9090",
+		EnableGRPCTLS:   false,
+		GRPCCertFile:    "",
+		GRPCKeyFile:     "",
 	}
 
 	// 1) Предварительно ищем путь к JSON-конфигу в аргументах или окружении
 	configPath := findConfigPathFromArgs()
-	if configPath == "" {
-		configPath = os.Getenv("CONFIG")
-	}
+    if configPath == "" {
+        if v, ok := os.LookupEnv("CONFIG"); ok {
+            configPath = v
+        }
+    }
 
 	// 2) Если найден путь, читаем JSON и применяем значения как новые дефолты
 	if configPath != "" {
@@ -137,46 +185,79 @@ func NewConfig() *Config {
 	flag.BoolVar(&cfg.EnableHTTPS, "s", cfg.EnableHTTPS, "Enable HTTPS (ListenAndServeTLS)")
 	// Флаг приватного ключа для асимметричного шифрования
 	flag.StringVar(&cfg.CryptoKeyPath, "crypto-key", cfg.CryptoKeyPath, "Path to RSA private key (PEM)")
+	// Флаг доверенной подсети в формате CIDR
+	flag.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "Trusted subnet in CIDR (e.g. 192.168.1.0/24)")
+	// gRPC флаги
+	flag.BoolVar(&cfg.EnableGRPC, "enable-grpc", cfg.EnableGRPC, "Enable gRPC server")
+	flag.StringVar(&cfg.GRPCAddress, "grpc-address", cfg.GRPCAddress, "gRPC server address")
+	flag.BoolVar(&cfg.EnableGRPCTLS, "grpc-enable-tls", cfg.EnableGRPCTLS, "Enable TLS for gRPC")
+	flag.StringVar(&cfg.GRPCCertFile, "grpc-cert-file", cfg.GRPCCertFile, "Path to gRPC TLS certificate file")
+	flag.StringVar(&cfg.GRPCKeyFile, "grpc-key-file", cfg.GRPCKeyFile, "Path to gRPC TLS private key file")
 	flag.Parse()
 
-	if envAddress := os.Getenv("ADDRESS"); envAddress != "" {
-		cfg.ServerAddress = envAddress
-	}
+    if envAddress, ok := os.LookupEnv("ADDRESS"); ok {
+        cfg.ServerAddress = envAddress
+    }
 
-	if envStoreInterval := os.Getenv("STORE_INTERVAL"); envStoreInterval != "" {
-		if si, err := strconv.Atoi(envStoreInterval); err == nil {
+    if envStoreInterval, ok := os.LookupEnv("STORE_INTERVAL"); ok {
+        if si, err := strconv.Atoi(envStoreInterval); err == nil {
 			cfg.StoreInterval = time.Duration(si) * time.Second
 		}
 	} else {
 		cfg.StoreInterval = time.Duration(*storeInterval) * time.Second
 	}
 
-	if envFilePath := os.Getenv("FILE_STORAGE_PATH"); envFilePath != "" {
-		cfg.FileStoragePath = envFilePath
-	}
+    if envFilePath, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
+        cfg.FileStoragePath = envFilePath
+    }
 
-	if envRestore := os.Getenv("RESTORE"); envRestore != "" {
-		cfg.Restore, _ = strconv.ParseBool(envRestore)
-	}
+    if envRestore, ok := os.LookupEnv("RESTORE"); ok {
+        cfg.Restore, _ = strconv.ParseBool(envRestore)
+    }
 
-	if envDatabaseDSN := os.Getenv("DATABASE_DSN"); envDatabaseDSN != "" {
-		cfg.DatabaseDSN = envDatabaseDSN
-	}
+    if envDatabaseDSN, ok := os.LookupEnv("DATABASE_DSN"); ok {
+        cfg.DatabaseDSN = envDatabaseDSN
+    }
 
 	// Читаем ключ из переменной окружения KEY (если задан)
-	if envKey := os.Getenv("KEY"); envKey != "" {
-		cfg.Key = envKey
-	}
+    if envKey, ok := os.LookupEnv("KEY"); ok {
+        cfg.Key = envKey
+    }
 
-	if envEnableHTTPS := os.Getenv("ENABLE_HTTPS"); envEnableHTTPS != "" {
-		if v, err := strconv.ParseBool(envEnableHTTPS); err == nil {
+    if envEnableHTTPS, ok := os.LookupEnv("ENABLE_HTTPS"); ok {
+        if v, err := strconv.ParseBool(envEnableHTTPS); err == nil {
 			cfg.EnableHTTPS = v
 		}
 	}
 
-	if envCryptoKey := os.Getenv("CRYPTO_KEY"); envCryptoKey != "" {
-		cfg.CryptoKeyPath = envCryptoKey
+    if envCryptoKey, ok := os.LookupEnv("CRYPTO_KEY"); ok {
+        cfg.CryptoKeyPath = envCryptoKey
+    }
+
+    if envTrusted, ok := os.LookupEnv("TRUSTED_SUBNET"); ok {
+        cfg.TrustedSubnet = envTrusted
+    }
+
+	// gRPC из окружения
+    if ev, ok := os.LookupEnv("ENABLE_GRPC"); ok {
+        if v, err := strconv.ParseBool(ev); err == nil {
+			cfg.EnableGRPC = v
+		}
 	}
+    if ev, ok := os.LookupEnv("GRPC_ADDRESS"); ok {
+        cfg.GRPCAddress = ev
+    }
+    if ev, ok := os.LookupEnv("GRPC_ENABLE_TLS"); ok {
+        if v, err := strconv.ParseBool(ev); err == nil {
+			cfg.EnableGRPCTLS = v
+		}
+	}
+    if ev, ok := os.LookupEnv("GRPC_CERT_FILE"); ok {
+        cfg.GRPCCertFile = ev
+    }
+    if ev, ok := os.LookupEnv("GRPC_KEY_FILE"); ok {
+        cfg.GRPCKeyFile = ev
+    }
 
 	return cfg
 }

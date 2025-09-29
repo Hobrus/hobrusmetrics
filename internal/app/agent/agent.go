@@ -16,6 +16,7 @@ type Agent struct {
 	Config    *config.Config
 	Metrics   *collector.Metrics
 	Sender    *sender.Sender
+	GRPC      *sender.GRPCSender
 	PollCount int64
 }
 
@@ -32,10 +33,21 @@ func NewAgent() *Agent {
 		_ = localSender.LoadRSAPublicKey(cfg.CryptoKeyPath)
 	}
 
+	var grpcSender *sender.GRPCSender
+	if cfg.UseGRPC {
+		grpcSender = &sender.GRPCSender{
+			Address: cfg.GRPCAddress,
+			Key:     cfg.Key,
+			UseTLS:  cfg.EnableGRPCTLS,
+			CAFile:  cfg.GRPCCAFile,
+		}
+	}
+
 	return &Agent{
 		Config:  cfg,
 		Metrics: metrics,
 		Sender:  localSender,
+		GRPC:    grpcSender,
 	}
 }
 
@@ -55,7 +67,11 @@ func (a *Agent) Run(ctx context.Context) {
 		go func(workerID int) {
 			defer workersWG.Done()
 			for task := range sendCh {
-				a.Sender.SendBatch(task)
+				if a.Config.UseGRPC && a.GRPC != nil {
+					a.GRPC.SendBatchGRPC(task)
+				} else {
+					a.Sender.SendBatch(task)
+				}
 			}
 		}(i)
 	}
@@ -118,4 +134,7 @@ func (a *Agent) Run(ctx context.Context) {
 	close(sendCh)
 	// Дожидаемся завершения всех воркеров
 	workersWG.Wait()
+	if a.GRPC != nil {
+		a.GRPC.Close()
+	}
 }
